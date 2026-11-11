@@ -77,6 +77,13 @@ the atlas Level 4 manifest `syn61518654`, where every BRCA file name matches its
   analysed cohort is 48 sections from 21 patients.
 * Checked before the full run: all 54 objects carry the per spot ESTIMATE table
   (section 20) aligned to their spots, and valid Visium grid coordinates (section 26).
+* **Four sections have too few P4HA1-positive spots to model P4HA1** (fewer than 70:
+  HT397B1-S1H3A1U41Bp1 with 3, HT480B1-S1H3Fs1U2Bp1 with 12, HT480B1-S1H3Fs1U1Bp1
+  with 36, HT425B1-S1H2Fs1U1Bp1 with 62). Section 15 already skips them for P4HA1.
+  Section 16 (random genes) now uses the same sections where P4HA1 can be modelled,
+  and sections 19 and 25 build their detection-matched gene pools from them too.
+  Before this, HT397B1-S1H3A1U41Bp1 (median about 152 UMIs per spot) removed P4HA1
+  itself from the section 16 gene table and stopped the run.
 * Some sections lack individual module genes (CA9, HAS1, CXCL1, CXCL2). Modules are
   scored from the genes present, as in PDAC.
 

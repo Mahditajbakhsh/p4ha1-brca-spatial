@@ -3490,6 +3490,24 @@ assert_run_state("Section 16")
 ## ============================================================================
 rates <- read.csv(RATES_CSV, stringsAsFactors = FALSE)
 
+## BRCA: build the comparison on the sections where P4HA1 itself can be
+## modelled (at least RND_MIN_EVENTS positive and negative spots), the same
+## sections section 15 fits P4HA1 on. A section where P4HA1 is seen in a
+## handful of spots (HT397B1-S1H3A1U41Bp1: 3 spots) falls under the detection
+## cache threshold, so P4HA1 is missing from its rates and the "present in
+## every section" filter below then drops P4HA1 itself. In PDAC every section
+## passed this rule, so there it changes nothing.
+det16 <- read.csv(file.path(agg, "DETECT_p4ha_per_sample.csv"), stringsAsFactors = FALSE)
+det16 <- det16[det16$gene == "P4HA1" & as.logical(det16$present), , drop = FALSE]
+RND_SECTIONS <- det16$sample_id[det16$n_detected >= RND_MIN_EVENTS &
+                                  (det16$n_spots - det16$n_detected) >= RND_MIN_EVENTS]
+rnd_dropped <- setdiff(work$sample_id, RND_SECTIONS)
+if (length(rnd_dropped))
+  log_msg("Section 16: %d section(s) left out, P4HA1 below %d events: %s",
+          length(rnd_dropped), RND_MIN_EVENTS, paste(rnd_dropped, collapse = ", "))
+if (length(RND_SECTIONS) < 2) stop("Section 16: fewer than 2 sections where P4HA1 can be modelled.")
+rates <- rates[rates$sample_id %in% RND_SECTIONS, , drop = FALSE]
+
 gene_med <- rates %>%
   group_by(gene) %>%
   summarise(median_rate = median(detect_rate), n_tumours = dplyr::n(), .groups = "drop") %>%
@@ -3648,6 +3666,7 @@ rnd_acc <- list()
 for (i in seq_len(nrow(work))) {
   path <- work$path[i]; sid <- work$sample_id[i]
   if (is.na(path) || !file.exists(path)) next
+  if (!sid %in% RND_SECTIONS) next   # BRCA: see 16.1
   log_msg("[rnd %d/%d] %s", i, nrow(work), sid)
   r <- tryCatch(rnd_one_tumour(path, sid),
                 error = function(e) { log_msg("  rnd skipped: %s", conditionMessage(e)); NULL })
@@ -4837,6 +4856,9 @@ assert_run_state("Section 19")
 ##   look coherent by comparison.
 ## ============================================================================
 rates <- read.csv(RATES_CSV, stringsAsFactors = FALSE)
+## BRCA: gene pool from the sections where P4HA1 can be modelled, as in 16.1,
+## so one near-empty section cannot remove genes from the pool
+if (exists("RND_SECTIONS")) rates <- rates[rates$sample_id %in% RND_SECTIONS, , drop = FALSE]
 gene_med <- rates %>%
   group_by(gene) %>%
   summarise(median_rate = median(detect_rate), n_tum = dplyr::n(), .groups = "drop") %>%
@@ -6802,6 +6824,9 @@ if (length(miss)) stop("Not in MODULES: ", paste(miss, collapse = ", "))
 ## 25.1  NULL POOL, MATCHED ON DETECTION RATE
 ## ============================================================================
 rates <- read.csv(RATES_CSV, stringsAsFactors = FALSE)
+## BRCA: gene pool from the sections where P4HA1 can be modelled, as in 16.1,
+## so one near-empty section cannot remove genes from the pool
+if (exists("RND_SECTIONS")) rates <- rates[rates$sample_id %in% RND_SECTIONS, , drop = FALSE]
 gene_med <- rates %>%
   group_by(gene) %>%
   summarise(median_rate = median(detect_rate), n_tum = dplyr::n(), .groups = "drop") %>%
