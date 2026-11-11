@@ -36,9 +36,9 @@ The list of sections comes from `Sample_ID_Lookup_table_v1.xlsx`, sheet Visium, 
 As a check, the same table gives 23 PDAC sections from 16 patients, which matches
 the PDAC pipeline.
 
-Not verified from here: whether every one of the 54 sections is available on the
-HTAN portal as a Level 4 Seurat object. The pipeline logs which expected sections
-were not found.
+All 54 sections have a Level 4 Seurat object on the HTAN portal: checked against
+the atlas Level 4 manifest `syn61518654`, where every BRCA file name matches its
+`sample_id` exactly (38 OCT, 16 FFPE).
 
 ## What differs from the PDAC pipeline
 

@@ -30,8 +30,14 @@ suffix). A file that matches nothing halts the run, so no unlisted section enter
 the cohort unnoticed; set `ALLOW_UNLISTED_FILES <- TRUE` to skip such files instead.
 A file that matches more than one section also halts the run.
 
-Not verified from here: the exact portal filters, and whether all 54 sections are
-available at Level 4. The run log lists every expected section that was not found.
+Checked against the Level 4 manifest `syn61518654` (132 files, all cancer types):
+all 54 BRCA sections have a Level 4 Seurat object (`File Format` RData, `Visium
+Workflow Type` Seurat4), matched on `HTAN Parent Biospecimen ID`, and every file
+name stem equals the `sample_id` in the table exactly. 38 are OCT and 16 FFPE. The
+run log still lists any expected section that is not in `data/seurat/`.
+
+Portal filters that give exactly these 54 files: Atlas HTAN WUSTL, Assay 10X
+Visium, Level 4, Organ Breast.
 
 ## 2. Inputs reused from the PDAC project
 
@@ -46,10 +52,12 @@ be copied over unchanged.
 
 ## 3. Optional manifest
 
-The PDAC run kept the Synapse manifest `syn61518654.csv`, which covers PDAC only.
-For BRCA, export a manifest for the BRCA files and save it as `data/manifest.csv`.
-In folder mode (the default) it is only used to label each section OCT or FFPE; if
-it is absent those columns stay empty.
+`syn61518654.csv` is the Level 4 manifest of the whole WUSTL atlas (132 files,
+all six cancer types), the same file the PDAC run used. Save only its 54 BRCA rows
+as `data/manifest.csv`. In folder mode (the default) it is only used to label each
+section OCT or FFPE; if it is absent those columns stay empty. In manifest mode the
+full 132 row file would halt the run, because the other cancers are not in the
+BRCA sample table.
 
 ## 4. The metastasis sensitivity run
 
