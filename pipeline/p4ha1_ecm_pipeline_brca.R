@@ -198,6 +198,45 @@ get_coords_aligned <- function(obj, img) {   # works on Seurat v4 and v5
   else { num <- co[, sapply(co, is.numeric), drop = FALSE]
   data.frame(x = num[[2]], y = num[[1]], row.names = rownames(co)) }
 }
+## BRCA: AddModuleScore with a bin fallback.
+## Seurat's AddModuleScore splits all genes into nbin bins by mean expression
+## (ggplot2::cut_number) to pick expression-matched control genes. In a few
+## sparse BRCA sections hundreds of genes have exactly one UMI in one spot, so
+## they share one identical mean (log(2)/n_spots) and 20 bins cannot be formed:
+## "Insufficient data values to produce 20 bins". PDAC never hit this.
+## This wrapper tries 20 bins first, exactly as before (same seed, so every
+## section that worked before gives the identical score), and only on that
+## specific error retries with 15 and then 10 bins. Every fallback is logged
+## and written to <OUT_ROOT>/nbin_fallback_log.csv. Any other error is raised
+## unchanged, so nothing else is hidden.
+NBIN_STEPS <- c(20, 15, 10)
+add_module_score_fallback <- function(object, features, name, assay, nbin = 20, ctrl = 50) {
+  sid_here <- get0("sid", envir = parent.frame(),
+                   ifnotfound = get0("sample_id", envir = parent.frame(), ifnotfound = NA_character_))
+  last_err <- NULL
+  for (nb in NBIN_STEPS[NBIN_STEPS <= nbin]) {
+    set.seed(SEED)
+    res <- tryCatch(AddModuleScore(object, features = features, name = name,
+                                   assay = assay, nbin = nb, ctrl = ctrl),
+                    error = function(e) e)
+    if (!inherits(res, "error")) {
+      if (nb != nbin) {
+        log_msg("  %s / %s: %d bins impossible (tied mean expression), scored with %d bins",
+                sid_here, name, nbin, nb)
+        fb <- file.path(OUT_ROOT, "nbin_fallback_log.csv")
+        suppressWarnings(write.table(data.frame(time = format(Sys.time()), sample_id = sid_here, module = name,
+                                                nbin_requested = nbin, nbin_used = nb),
+                                     fb, sep = ",", row.names = FALSE, col.names = !file.exists(fb), append = TRUE))
+      }
+      return(res)
+    }
+    last_err <- res
+    if (!grepl("bins", conditionMessage(res))) break
+  }
+  log_msg("  %s / %s: AddModuleScore failed: %s", sid_here, name, conditionMessage(last_err))
+  stop(last_err)
+}
+
 add_modules_safe <- function(obj, modules) {
   present <- character(0)
   for (nm in names(modules)) {
@@ -205,7 +244,7 @@ add_modules_safe <- function(obj, modules) {
     if (length(g) < 2) next
     ok <- tryCatch({
       set.seed(SEED)                                    # v3
-      obj <- AddModuleScore(obj, features = list(g), name = nm,
+      obj <- add_module_score_fallback(obj, features = list(g), name = nm,
                             assay = DefaultAssay(obj), nbin = 20, ctrl = 50); TRUE },
       error = function(e) FALSE)
     if (!ok) next
@@ -843,7 +882,7 @@ hypoxia_logit_both <- function(rds_path, sid) {
     if (length(g) < 2) return(NULL)
     nm  <- paste0("HypTmp_", tag)
     set.seed(SEED)                                           # v3
-    o <- tryCatch(AddModuleScore(obj, features = list(g), name = nm,
+    o <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
                                  assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
                   error = function(e) NULL)
     col <- paste0(nm, "1")
@@ -928,7 +967,7 @@ strat_expr_one <- function(rds_path) {
     if (length(g) < 2) return(NULL)
     set.seed(SEED)                                           # v3
     obj <- tryCatch(
-      AddModuleScore(obj, features = list(g), name = nm,
+      add_module_score_fallback(obj, features = list(g), name = nm,
                      assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
       error = function(e) NULL)
     if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) return(NULL)
@@ -1235,7 +1274,7 @@ prot_expr_one <- function(rds_path, sid) {
     }
     set.seed(SEED)                                           # v3
     obj <- tryCatch(
-      AddModuleScore(obj, features = list(g), name = nm,
+      add_module_score_fallback(obj, features = list(g), name = nm,
                      assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
       error = function(e) NULL)
     if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) return(NULL)
@@ -1573,7 +1612,7 @@ if (!file.exists(HYPRANGE_CSV)) {
     g <- intersect(MODULES$Hypoxia, rownames(obj))
     if (length(g) < 2) return(NULL)
     set.seed(SEED)
-    obj <- AddModuleScore(obj, features = list(g), name = "H",
+    obj <- add_module_score_fallback(obj, features = list(g), name = "H",
                           assay = DefaultAssay(obj), nbin = 20, ctrl = 50)
     v <- obj@meta.data$H1
     qs <- function(q) unname(quantile(v, q, na.rm = TRUE))
@@ -2594,7 +2633,7 @@ joint_expr_one <- function(rds_path, sid) {
       return(NULL)
     }
     set.seed(SEED)
-    obj <- tryCatch(AddModuleScore(obj, features = list(g), name = nm,
+    obj <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
                                    assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
                     error = function(e) NULL)
     if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) return(NULL)
@@ -3062,7 +3101,7 @@ iso_expr_one <- function(rds_path, sid) {
       return(NULL)
     }
     set.seed(SEED)
-    obj <- tryCatch(AddModuleScore(obj, features = list(g), name = nm,
+    obj <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
                                    assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
                     error = function(e) NULL)
     if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) return(NULL)
@@ -3526,7 +3565,7 @@ rnd_one_tumour <- function(rds_path, sid) {
       log_msg("  %s: %s coverage too low -> sample skipped", sid, nm); return(NULL)
     }
     set.seed(SEED)
-    obj <- tryCatch(AddModuleScore(obj, features = list(g), name = nm,
+    obj <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
                                    assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
                     error = function(e) NULL)
     if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) return(NULL)
@@ -4150,7 +4189,7 @@ metab_expr_one <- function(rds_path, sid) {
       return(NULL)
     }
     set.seed(SEED)
-    obj <- tryCatch(AddModuleScore(obj, features = list(g), name = nm,
+    obj <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
                                    assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
                     error = function(e) NULL)
     if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) return(NULL)
@@ -5313,7 +5352,7 @@ sc_expr_one <- function(rds_path, sid) {
       return(NULL)
     }
     set.seed(SEED)
-    obj <- tryCatch(AddModuleScore(obj, features = list(g), name = nm,
+    obj <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
                                    assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
                     error = function(e) NULL)
     if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) return(NULL)
@@ -6090,7 +6129,7 @@ el_one <- function(rds_path, sid) {
       log_msg("  %s: %s has %d/%d genes -> skipped", sid, nm, length(g), length(full)); return(NULL)
     }
     set.seed(SEED)
-    obj <- tryCatch(AddModuleScore(obj, features = list(g), name = nm,
+    obj <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
                                    assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
                     error = function(e) NULL)
     if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) return(NULL)
@@ -6107,7 +6146,7 @@ el_one <- function(rds_path, sid) {
     }
     nm <- paste0("ERv_", v)
     set.seed(SEED)
-    obj <- tryCatch(AddModuleScore(obj, features = list(g), name = nm,
+    obj <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
                                    assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
                     error = function(e) NULL)
     if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) next
@@ -6473,7 +6512,7 @@ upr_one <- function(rds_path, sid) {
     g <- intersect(gset, rownames(obj))
     if (length(g) < min_genes_for(gset)) return(NULL)
     set.seed(SEED)
-    o <- tryCatch(AddModuleScore(obj, features = list(g), name = nm,
+    o <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
                                  assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
                   error = function(e) NULL)
     if (is.null(o) || !paste0(nm, "1") %in% colnames(o@meta.data)) return(NULL)
@@ -7034,7 +7073,7 @@ sp_load <- function(rds_path, sid) {
       log_msg("  %s: %s has %d/%d genes -> skipped", sid, nm, length(g), length(full)); return(NULL)
     }
     set.seed(SEED)
-    obj <- tryCatch(AddModuleScore(obj, features = list(g), name = nm,
+    obj <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
                                    assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
                     error = function(e) NULL)
     if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) return(NULL)

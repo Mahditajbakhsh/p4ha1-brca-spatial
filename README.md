@@ -62,6 +62,21 @@ the atlas Level 4 manifest `syn61518654`, where every BRCA file name matches its
    marked as PDAC, and each section header from 7 onward carries a note saying so.
    Every code change is tagged `BRCA:` in the script.
 
+## Data issues found in the BRCA objects
+
+* **AddModuleScore cannot form 20 bins in three sections** (HT262B1-S1H2Fc2U1Z1Bs1,
+  HT486B1-S1H1Fs1U1Bp1, HT397B1-S1H3A1U41Bp1). In these sparse sections 700 to
+  1,800 genes have exactly one UMI in one spot, so they share one identical mean
+  expression and Seurat's binning fails. The pipeline now tries 20 bins first
+  (unchanged for every other section, same seed, same score) and only on that
+  error retries with 15 and then 10 bins. Each fallback is logged and written to
+  `nbin_fallback_log.csv` in the output folder. In the first run, before this
+  fix, the PDAC code dropped these sections silently from sections 3 to 11.
+* **HT397B1-S1H3A1U61Bp1 has no P4HA1 in the object** (7,498 features only) and is
+  excluded by the existing check in section 3.
+* Some sections lack individual module genes (CA9, HAS1, CXCL1, CXCL2). Modules are
+  scored from the genes present, as in PDAC.
+
 ## Decisions kept from PDAC, and what they mean here
 
 * **Same gene sets.** `iCAF` and `myCAF` modules come from pancreatic cancer work.
