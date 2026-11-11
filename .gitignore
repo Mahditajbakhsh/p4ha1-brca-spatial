@@ -1,0 +1,33 @@
+# Data. Never commit the cohort.
+*.rds
+*.RDS
+*.h5
+*.h5ad
+*.mtx
+*.loom
+*.tsv
+*.csv
+!docs/*.csv
+
+# R session and project files
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+.Rproj.user/
+*.Rproj
+renv/library/
+renv/staging/
+
+# Pipeline output
+run_log.txt
+aggregate/
+cohort_*/
+*_depthadj*
+
+# Per-sample figures, around 230 PNGs per run
+per_sample/
+
+# OS
+.DS_Store
+Thumbs.db
