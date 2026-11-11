@@ -72,8 +72,11 @@ the atlas Level 4 manifest `syn61518654`, where every BRCA file name matches its
   error retries with 15 and then 10 bins. Each fallback is logged and written to
   `nbin_fallback_log.csv` in the output folder. In the first run, before this
   fix, the PDAC code dropped these sections silently from sections 3 to 11.
-* **HT397B1-S1H3A1U61Bp1 has no P4HA1 in the object** (7,498 features only) and is
-  excluded by the existing check in section 3.
+* **HT397B1-S1H3A1U61Bp1 has no P4HA1 in the object** (7,498 features only). It fails
+  section 3 and is then removed from the work list for every later section, so the
+  analysed cohort is 48 sections from 21 patients.
+* Checked before the full run: all 54 objects carry the per spot ESTIMATE table
+  (section 20) aligned to their spots, and valid Visium grid coordinates (section 26).
 * Some sections lack individual module genes (CA9, HAS1, CXCL1, CXCL2). Modules are
   scored from the genes present, as in PDAC.
 
@@ -132,8 +135,8 @@ re-entered below its own settings block.
   patient's variance is too small, although each patient still counts once for k.
   The three level model in section 21 does not make that assumption.
 * **mRNA, not protein.** All results are transcript level associations.
-* **Section 20** depends on per spot ESTIMATE output inside each Seurat object.
-  This was verified for PDAC only; sections without it are skipped and logged.
+* **Section 20** depends on per spot ESTIMATE output inside each Seurat object; it is
+  present and aligned in all 54 BRCA objects.
 
 ## Reproducibility
 

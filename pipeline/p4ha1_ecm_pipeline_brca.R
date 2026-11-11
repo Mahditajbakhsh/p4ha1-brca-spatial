@@ -691,6 +691,20 @@ write.csv(work[, c("sample_id", "table_id", "patient_id", "primary_metastasis")]
           file.path(agg, "cohort_sections.csv"), row.names = FALSE)
 log_msg("Samples ok: %d / %d", sum(status$status=="ok"), nrow(status))
 
+## BRCA: a section that failed the basic per-section analysis (for example
+## HT397B1-S1H3A1U61Bp1, whose object has no P4HA1) has no outcome for any later
+## model. Drop it from the work list here, once and visibly, so no later section
+## opens it again. Sections 9 to 26 already skipped such sections one by one;
+## section 12.0 did not and crashed on it.
+failed_secs <- status$sample_id[status$status != "ok"]
+if (length(failed_secs)) {
+  log_msg("Removed from the work list for sections 6 onward (failed in section 3): %s",
+          paste(failed_secs, collapse = ", "))
+  work <- work[!work$sample_id %in% failed_secs, , drop = FALSE]
+}
+log_msg("Work list for the rest of the run: %d sections, %d patients.",
+        nrow(work), length(unique(work$patient_id)))
+
 ## ============================================================================
 ## 6. CROSS-SAMPLE pooled forest
 ## ============================================================================
@@ -1612,8 +1626,11 @@ if (!file.exists(HYPRANGE_CSV)) {
     g <- intersect(MODULES$Hypoxia, rownames(obj))
     if (length(g) < 2) return(NULL)
     set.seed(SEED)
-    obj <- add_module_score_fallback(obj, features = list(g), name = "H",
-                          assay = DefaultAssay(obj), nbin = 20, ctrl = 50)
+    ## BRCA: one unscorable section must not stop the run; log it and skip it
+    obj <- tryCatch(add_module_score_fallback(obj, features = list(g), name = "H",
+                                              assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
+                    error = function(e) { log_msg("  %s: hypoxia range skipped: %s", sid, conditionMessage(e)); NULL })
+    if (is.null(obj)) return(NULL)
     v <- obj@meta.data$H1
     qs <- function(q) unname(quantile(v, q, na.rm = TRUE))
     data.frame(sample_id = sid, n_spots = length(v),
