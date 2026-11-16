@@ -1,68 +1,64 @@
 ################################################################################
 # P4HA1 / ECM / hypoxia in spatial transcriptomics  --  BREAST CANCER (BRCA)
-# cohort pipeline, ported from the PDAC pipeline v4
-#   (github.com/Mahditajbakhsh/p4ha1-pdac-spatial, pipeline/p4ha1_ecm_pipeline_v4.R)
+# cohort pipeline v6
 #
-# The analysis is the PDAC analysis. Gene panel, modules, models, seeds and
-# section order are unchanged, so the two cancers can be compared directly.
-# Only the cohort and the pooling unit change. Every change is listed below and
-# tagged "BRCA:" at the place in the code where it happens.
-#
-# SECTION MAP: see docs/section_map.md
-#
-# ---- CHANGES FROM THE PDAC v4 PIPELINE ---------------------------------------
-# (B1) COHORT. 54 Visium sections from 22 patients, HTAN WUSTL atlas
-#      (Mo et al., Nature 2024, doi:10.1038/s41586-024-08087-4). The list of
-#      sections, their patient and their primary / metastasis status come from
-#      docs/brca_visium_samples.csv, taken from Sample_ID_Lookup_table_v1.xlsx
-#      (sheet Visium) in github.com/ding-lab/ST_subclone_publication.
-#
-# (B2) PRIMARY TUMOURS ONLY in the main run. The 5 metastatic sections all come
-#      from one patient (HT268B1). They are left out of the work list unless
-#      INCLUDE_METASTASIS <- TRUE, which writes to a separate output folder so
-#      nothing is overwritten. Section 22 compares the two runs.
-#
-# (B3) THE PATIENT IS THE POOLING UNIT. In PDAC most patients had one section
-#      and pooling was over sections, with patients as a sensitivity (section
-#      21). In BRCA several patients have 4 to 6 serial sections cut 5 to 100 um
-#      apart, which are close to replicates of one tissue. Pooling over
-#      sections would let one tumour vote six times. meta_pool() therefore
-#      first combines the sections of each patient (fixed effect, inverse
-#      variance, the same collapse PDAC section 21 used) and then pools the
-#      patients with DerSimonian-Laird. POOL_LEVEL <- "section" restores the
-#      PDAC behaviour; section 21 now reports that as the sensitivity.
-#      meta_pool() halts if it is called without sample IDs, so no pooling
-#      step can silently fall back to the section level.
-#
+# COHORT AND DESIGN
+# (B1) 54 Visium sections from 22 patients, HTAN WUSTL atlas (Mo et al.,
+#      Nature 2024, doi:10.1038/s41586-024-08087-4). Sections, patients and
+#      primary / metastasis status come from docs/brca_visium_samples.csv
+#      (Sample_ID_Lookup_table_v1.xlsx, sheet Visium,
+#      github.com/ding-lab/ST_subclone_publication).
+# (B2) PRIMARY TUMOURS ONLY in the main run. The 5 metastatic sections (all
+#      from HT268B1) enter only with INCLUDE_METASTASIS <- TRUE, which writes
+#      to a separate output folder.
+# (B3) THE PATIENT IS THE POOLING UNIT. Serial sections of one patient are
+#      collapsed (fixed effect, inverse variance), then patients are pooled
+#      with DerSimonian-Laird. POOL_LEVEL <- "section" pools sections instead;
+#      section 21 reports it as a sensitivity analysis.
 # (B4) ONE PROJECT ROOT. All paths are derived from P4HA1_BRCA_ROOT.
 #
-# (B5) PDAC RESULTS REMOVED FROM COMMENTS. Comments in the PDAC script quoted
-#      PDAC numbers (odds ratios, k, coverage, sample IDs). They are not true
-#      for this cohort and were removed or marked "PDAC:". Hard coded PDAC
-#      checks (expected patient count, the metastasis ID) now come from the
-#      sample table.
+# CELL-TYPE AND HYPOXIA MODULES (breast-specific; section 1)
+#   Hypoxia     Buffa hypoxia metagene, MSigDB BUFFA_HYPOXIA_METAGENE (M34030,
+#               50 genes) minus P4HA1, which is the outcome: 49 genes.
+#               Buffa et al., Br J Cancer 2010, doi:10.1038/sj.bjc.6605450;
+#               derived in breast and head and neck cancer. Among the best
+#               performing signatures in tumours in Di Giovannantonio et al.,
+#               Cell Genomics 2025, doi:10.1016/j.xgen.2025.100764.
+#   iCAF, mCAF  Breast CAF classification, Cords et al., Nat Commun 2023,
+#               doi:10.1038/s41467-023-39762-1, Table 1 (named genes only;
+#               "collagens" in the mCAF entry is not expanded).
+#   Epithelial  EPCAM, luminal keratins KRT8 / KRT18 / KRT19, and the basal /
+#               myoepithelial keratins KRT5 / KRT14 (Reed et al., Nat Genet
+#               2024, doi:10.1038/s41588-024-01688-9). CDH1 is not used: it is
+#               lost in invasive lobular carcinoma.
+#   The collagen, ECM, ER stress, ERAD and metabolic modules describe P4HA1
+#   biology, not a cancer type; their sources are given where they are defined.
 #
-# ---- HOW TO RUN THE DEPTH CHECK (unchanged from PDAC) -----------------------
-#   1. Run once with ADJUST_DEPTH <- FALSE   (files have no suffix)
-#   2. Set ADJUST_DEPTH <- TRUE and re-run sections 13 to 16
-#   3. Run section 17 to print the comparison
+# ---- CHANGES IN v6 -----------------------------------------------------------
+#   Breast-specific Hypoxia, iCAF, mCAF (replaces mCAF) and Epithelial
+#   modules as above. Section 9 tests ENO1 inside the new hypoxia module.
+#   Section 16 requires a gene to be pooled over two thirds of the units.
+#   Figures: axis ranges no longer delete error bars (coord_cartesian),
+#   Figure 3 axis label, Figure 4 "effects differ", Figure 5 without the
+#   circular CollagenMaturation module, Figure 7 wording on P4HA3 (an active
+#   collagen P4H, Kukkola et al., J Biol Chem 2003, doi:10.1074/jbc.M306806200).
 #
-# ---- KNOWN LIMITATIONS (carried over from PDAC) ------------------------------
-#     Spatial autocorrelation between neighbouring spots is not modelled in
-#     the regressions, so every model confidence interval is narrower than it
-#     should be. Section 16 (random genes) and section 26 (spatial
-#     permutation) measure how large that problem is in this cohort. Quote
-#     empirical percentiles rather than model p values.
+# ---- HOW TO RUN THE DEPTH CHECK ----------------------------------------------
+#   1. Run once with ADJUST_DEPTH <- FALSE (block 12b)  (files have no suffix)
+#   2. Set ADJUST_DEPTH <- TRUE and re-run, fresh session, from the top
+#   3. Section 17 prints the comparison
 #
-#     The fixed effect collapse inside a patient treats serial sections as
-#     independent, so the variance of each patient estimate is too small.
-#     The patient still counts once for k and for tau2. Section 21 reports
-#     a three level model (sections in patients) as a second opinion when
-#     metafor is installed.
-#
-#     The cohort is read end to end many times (sections 9, 10, 11, 13 to 16).
-#     Not merged, for the same reason as in PDAC: section 11 can drop a sample
-#     on low gene coverage and section 10 cannot, so a merge would change k.
+# ---- KNOWN LIMITATIONS -------------------------------------------------------
+#   Spatial autocorrelation between spots is not modelled, so every model CI
+#   is too narrow. Sections 16 and 26 measure how large that is. Quote
+#   empirical percentiles rather than model p values.
+#   The fixed-effect collapse inside a patient treats serial sections as
+#   independent, so each patient's variance is too small. Section 21 reports
+#   a three-level model when metafor is installed.
+#   The Buffa hypoxia metagene contains proliferation genes (e.g. KIF20A,
+#   ANLN, KIF4A), so part of its score can track proliferation.
+#   The mCAF module has three genes; POSTN and MMP11 are also in the
+#   descriptive ECM modules (never in the same model).
 #
 # Run top to bottom in a fresh R session.
 ################################################################################
@@ -76,39 +72,36 @@ if (requireNamespace("viridis", quietly = TRUE)) suppressPackageStartupMessages(
 ## ============================================================================
 ## 0. CONFIG
 ## ============================================================================
-## BRCA: everything below hangs off one root folder. Set the environment
-## variable P4HA1_BRCA_ROOT, or edit the default here. Expected layout:
+## Expected layout under the root:
 ##   <root>/data/seurat/      the *-SeuratObj.rds files
 ##   <root>/data/manifest.csv optional Synapse manifest
 ##   <root>/data/upr_sets/    MSigDB UPR gene set TSVs (section 24)
 ##   <root>/data/estimate_audit/ESTIMATE_signatures_used.csv (section 20)
 PROJECT_ROOT <- Sys.getenv("P4HA1_BRCA_ROOT", unset = path.expand("~/p4ha1_brca"))
 
-## BRCA: path of the repo's sample table. Defaults to docs/ next to this script's
-## folder when sourced from the repo root; set P4HA1_BRCA_SAMPLES to override.
 SAMPLE_TABLE <- Sys.getenv("P4HA1_BRCA_SAMPLES", unset = file.path("docs", "brca_visium_samples.csv"))
 
-## BRCA: main run = primary tumours only. TRUE adds the 5 metastatic sections
+## main run = primary tumours only. TRUE adds the 5 metastatic sections
 ## (one patient) and writes to a different output folder.
 INCLUDE_METASTASIS <- FALSE
 
-## BRCA: pooling unit. "patient" is the primary analysis, "section" reproduces
-## the PDAC behaviour and is the sensitivity analysis.
+## pooling unit. "patient" is the primary analysis, "section" is the
+## sensitivity analysis that pools sections directly.
 POOL_LEVEL <- "patient"
 stopifnot(POOL_LEVEL %in% c("patient", "section"))
-K_UNIT <- if (POOL_LEVEL == "patient") "patients" else "sections"   # BRCA: label for pooled k
+K_UNIT <- if (POOL_LEVEL == "patient") "patients" else "sections"
 
-## BRCA: a downloaded .rds that is not in the sample table halts the run unless
-## this is TRUE, so no unlisted section can enter the cohort unnoticed.
+## a downloaded .rds that is not in the sample table halts the run unless TRUE
 ALLOW_UNLISTED_FILES <- FALSE
 
-INPUT_MODE   <- "folder"   # "folder" = analyse every *-SeuratObj.rds in DOWNLOAD_DIR
+INPUT_MODE   <- "folder"   # "folder" = every *-SeuratObj.rds in DOWNLOAD_DIR
 # "manifest" = drive from MANIFEST_CSV + entityIds
 
 DOWNLOAD_DIR <- file.path(PROJECT_ROOT, "data", "seurat")
 OUT_ROOT     <- file.path(PROJECT_ROOT, paste0(
   if (INCLUDE_METASTASIS) "cohort_with_metastasis" else "cohort_primary",
-  if (POOL_LEVEL == "section") "_sectionpool" else ""))
+  if (POOL_LEVEL == "section") "_sectionpool" else "",
+  Sys.getenv("P4HA1_BRCA_OUT_SUFFIX", unset = "")))   # e.g. "_v5" to keep earlier runs
 MANIFEST_CSV <- file.path(PROJECT_ROOT, "data", "manifest.csv")  # skipped if absent
 
 # only used in manifest mode
@@ -116,35 +109,30 @@ INCLUDE_SAMPLE_IDS <- character(0)
 INCLUDE_ENTITY_IDS <- character(0)
 USE_SYNAPSER       <- FALSE
 
-SAVE_PER_SAMPLE_FIGS <- TRUE    # set FALSE on re-runs: ~230 PNGs, slow, rarely re-read
-SAVE_ANALYZED_RDS    <- FALSE   # also save each analysed object (heavy)
+SAVE_PER_SAMPLE_FIGS <- TRUE    # FALSE on re-runs: hundreds of PNGs, slow
+SAVE_ANALYZED_RDS    <- FALSE
 SPOT_SIZE            <- 250
 
-## v3: one seed for the whole run. AddModuleScore samples its control genes, so
-## without this the same module scored in two different sections is not the same
-## variable. set.seed(SEED) is called immediately before EVERY AddModuleScore.
+## One seed for the whole run. AddModuleScore samples its control genes, so
+## set.seed(SEED) is called immediately before EVERY AddModuleScore.
 SEED <- 1234
 set.seed(SEED)
 
-## NOTE: the depth switch, RUN_ID, stamp() and outf() are defined in the
-## SECTION 0 PATCH block further down, immediately before section 13. They
-## live there because the run-state guard that checks them must not depend
-## on any single section. Do not define them here as well.
+## NOTE: ADJUST_DEPTH, RUN_ID, stamp() and outf() are defined in block 12b,
+## immediately before section 13. Do not define them here as well.
 
 
 ## ============================================================================
 ## 1. Gene panel + modules
 ## ============================================================================
-gene_panel <- c(
-  "P4HA1","P4HA2","P4HB","PLOD1","PLOD2","PLOD3",
-  "COL1A1","COL1A2","COL3A1","COL5A1","COL5A2","COL6A1","COL6A2","COL6A3",
-  "LOX","LOXL1","LOXL2","LOXL3","LOXL4",
-  "FN1","POSTN","SPARC","FBN1","THBS2",
-  "MMP2","MMP11","MMP14","TIMP1","TIMP2",
-  "ACTA2","TAGLN","MYH11","MCAM",
-  "IL6","CXCL12","CXCL1","CXCL2","HAS1","PDGFRA",
-  "VEGFA","CA9","SLC2A1","LDHA","BNIP3","ANGPTL4","ENO1","HIF1A",
-  "EPCAM","KRT8","KRT18","KRT19" ,"CDH1")
+## v6: breast-specific cell-type and hypoxia modules; sources in the header.
+BUFFA_HYPOXIA_M34030 <- c(   # MSigDB BUFFA_HYPOXIA_METAGENE, verbatim, 50 genes
+  "NDRG1","LDHA","PGK1","TPI1","PGAM1","PFKP","ENO1","SLC2A1","PNP","BNIP3",
+  "PSRC1","SLC16A1","DDIT4","ADM","HK2","SEC61G","AK4","CA9","P4HA1","ACOT7",
+  "GPI","TUBB6","TUBA1C","CDKN3","CTSV","VEGFA","TUBA1A","LRRC42","PSMA7","GAPDH",
+  "CHCHD2","YKT6","MIF","MAP7D1","MRPL15","MRPL13","MCTS1","UTP11","KIF4A","HILPDA",
+  "MRGBP","KIF20A","MRPS17","ESRP1","SHCBP1","SLC25A32","CORO1C","ANLN","MAD2L2","ANKRD37")
+stopifnot(length(BUFFA_HYPOXIA_M34030) == 50, !anyDuplicated(BUFFA_HYPOXIA_M34030))
 
 MODULES <- list(
   CollagenSynthesis  = c("COL1A1","COL1A2","COL3A1","COL5A1","COL5A2","COL6A1","COL6A2","COL6A3"),
@@ -152,21 +140,22 @@ MODULES <- list(
   ECMCrosslink       = c("LOX","LOXL1","LOXL2","LOXL3","LOXL4"),
   ECMGlycoprotein    = c("FN1","POSTN","SPARC","FBN1","THBS2"),
   ECMRemodel         = c("MMP2","MMP11","MMP14","TIMP1","TIMP2"),
-  myCAF              = c("ACTA2","TAGLN","MYH11","MCAM"),
-  iCAF               = c("IL6","CXCL12","CXCL1","CXCL2","HAS1","PDGFRA"),
-  Hypoxia            = c("VEGFA","CA9","SLC2A1","LDHA","BNIP3","ANGPTL4","ENO1"),
-  Epithelial         = c("EPCAM","KRT8","KRT18","KRT19","CDH1"))
+  mCAF               = c("MMP11","CDH11","POSTN"),                            # Cords 2023, Table 1
+  iCAF               = c("PLA2G2A","CFD","C3","CD34","CXCL12","CD248"),       # Cords 2023, Table 1
+  Hypoxia            = setdiff(BUFFA_HYPOXIA_M34030, "P4HA1"),                # P4HA1 is the outcome
+  Epithelial         = c("EPCAM","KRT8","KRT18","KRT19","KRT5","KRT14"))      # Reed 2024
+
+## genes whose presence is logged per section: P4HA1 plus every module gene
+gene_panel <- unique(c("P4HA1", unlist(MODULES, use.names = FALSE)))
 
 TARGET_GENES   <- c("COL1A1","COL1A2","COL3A1","COL5A1","COL6A1","FN1","POSTN","SPARC","LOX","LOXL2")
 MODULE_TARGETS <- c("CollagenSynthesis","CollagenMaturation","ECMCrosslink",
-                    "ECMGlycoprotein","Hypoxia","myCAF","iCAF","Epithelial")
-LOGIT_MODULES  <- c("Hypoxia","Epithelial","myCAF","CollagenSynthesis","iCAF")
+                    "ECMGlycoprotein","Hypoxia","mCAF","iCAF","Epithelial")
+LOGIT_MODULES  <- c("Hypoxia","Epithelial","mCAF","CollagenSynthesis","iCAF")
 
-## NOTE ON CollagenMaturation: it contains P4HA1 and is therefore circular as a
-## predictor. It is scored and plotted descriptively only. It is NOT in
-## LOGIT_MODULES and must never enter a model of P4HA1 detection.
-## It also contains P4HA2, which matters in section 15 where P4HA2 becomes an
-## outcome. Section 15.1 re-checks this automatically and halts on failure.
+## CollagenMaturation contains P4HA1 (and P4HA2), so it is circular as a
+## predictor. Scored and plotted descriptively only; never in a model of
+## P4HA1 or P4HA2. Section 15.1 re-checks this and halts on failure.
 
 ## ============================================================================
 ## 2. Helpers
@@ -198,17 +187,13 @@ get_coords_aligned <- function(obj, img) {   # works on Seurat v4 and v5
   else { num <- co[, sapply(co, is.numeric), drop = FALSE]
   data.frame(x = num[[2]], y = num[[1]], row.names = rownames(co)) }
 }
-## BRCA: AddModuleScore with a bin fallback.
-## Seurat's AddModuleScore splits all genes into nbin bins by mean expression
-## (ggplot2::cut_number) to pick expression-matched control genes. In a few
-## sparse BRCA sections hundreds of genes have exactly one UMI in one spot, so
-## they share one identical mean (log(2)/n_spots) and 20 bins cannot be formed:
-## "Insufficient data values to produce 20 bins". PDAC never hit this.
-## This wrapper tries 20 bins first, exactly as before (same seed, so every
-## section that worked before gives the identical score), and only on that
-## specific error retries with 15 and then 10 bins. Every fallback is logged
-## and written to <OUT_ROOT>/nbin_fallback_log.csv. Any other error is raised
-## unchanged, so nothing else is hidden.
+
+## AddModuleScore with a bin fallback. In a few sparse BRCA sections hundreds
+## of genes share one identical mean and 20 bins cannot be formed
+## ("Insufficient data values to produce 20 bins"). 20 bins are tried first
+## (same seed, so every section that worked before gives the identical score);
+## only on that error 15 and then 10 bins are tried. Every fallback is logged
+## to <OUT_ROOT>/nbin_fallback_log.csv. Any other error is raised unchanged.
 NBIN_STEPS <- c(20, 15, 10)
 add_module_score_fallback <- function(object, features, name, assay, nbin = 20, ctrl = 50) {
   sid_here <- get0("sid", envir = parent.frame(),
@@ -243,9 +228,9 @@ add_modules_safe <- function(obj, modules) {
     g <- intersect(modules[[nm]], rownames(obj))
     if (length(g) < 2) next
     ok <- tryCatch({
-      set.seed(SEED)                                    # v3
+      set.seed(SEED)
       obj <- add_module_score_fallback(obj, features = list(g), name = nm,
-                            assay = DefaultAssay(obj), nbin = 20, ctrl = 50); TRUE },
+                                       assay = DefaultAssay(obj), nbin = 20, ctrl = 50); TRUE },
       error = function(e) FALSE)
     if (!ok) next
     old <- paste0(nm, "1")
@@ -256,8 +241,8 @@ add_modules_safe <- function(obj, modules) {
   }
   list(obj = obj, modules = present)
 }
-## BRCA: the sample table. Read once here because meta_pool() needs the
-## section -> patient map. Columns: sample_id, patient_id, htan_biospecimen_id,
+
+## The sample table. Columns: sample_id, patient_id, htan_biospecimen_id,
 ## htan_participant_id, primary_metastasis, cancer_type.
 if (!file.exists(SAMPLE_TABLE))
   stop("Sample table not found: ", SAMPLE_TABLE,
@@ -267,8 +252,7 @@ stopifnot(all(c("sample_id", "patient_id", "primary_metastasis") %in% names(SAMP
           !anyDuplicated(SAMPLES$sample_id),
           all(SAMPLES$primary_metastasis %in% c("Primary", "Metastasis")))
 
-## BRCA: section -> patient. Filled in section 4 once the downloaded files have
-## been matched to the table (file names may carry suffixes the table lacks).
+## section -> patient. Extended in section 4 with the file stems.
 SAMPLE_PATIENT <- setNames(SAMPLES$patient_id, SAMPLES$sample_id)
 patient_of <- function(sid) {
   p <- unname(SAMPLE_PATIENT[as.character(sid)])
@@ -277,8 +261,20 @@ patient_of <- function(sid) {
   p
 }
 
-## BRCA: fixed effect, inverse variance collapse of the sections of each
-## patient. Identical to fe_collapse() in PDAC section 21.
+## v5 (C4): the unit a descriptive summary counts. With POOL_LEVEL "patient"
+## medians, box plots and paired tests use ONE value per patient (the mean of
+## that patient's sections). With "section" the unit is the section.
+UNIT_LABEL  <- if (identical(POOL_LEVEL, "patient")) "patient" else "section"
+unit_of     <- function(sid) if (identical(POOL_LEVEL, "patient")) patient_of(sid) else as.character(sid)
+n_units     <- function(sid) length(unique(unit_of(sid)))
+unit_values <- function(x, sid) {
+  ok <- is.finite(x)
+  if (!any(ok)) return(numeric(0))
+  as.numeric(tapply(x[ok], unit_of(sid[ok]), mean))
+}
+unit_median <- function(x, sid) { v <- unit_values(x, sid); if (length(v)) median(v) else NA_real_ }
+
+## fixed effect, inverse variance collapse of the sections of each patient
 collapse_to_patients <- function(yi, vi, sid) {
   pid <- patient_of(sid)
   ok  <- is.finite(yi) & is.finite(vi) & vi > 0
@@ -291,11 +287,9 @@ collapse_to_patients <- function(yi, vi, sid) {
        n_sec = length(yi))
 }
 
-# DerSimonian-Laird random-effects pooling
-## BRCA: sid (the section IDs, same order as yi) is now required when
-## POOL_LEVEL is "patient". The DL step itself is unchanged from PDAC.
-## k counts patients (or sections when POOL_LEVEL is "section");
-## k_sections always counts the sections that went in.
+## DerSimonian-Laird random-effects pooling. sid (section IDs, same order as
+## yi) is required when POOL_LEVEL is "patient". k counts patients (or
+## sections); k_sections always counts the sections that went in.
 meta_pool <- function(yi, vi, sid = NULL) {
   yi <- as.numeric(yi); vi <- as.numeric(vi)
   n_sec <- sum(is.finite(yi) & is.finite(vi) & vi > 0)
@@ -314,11 +308,11 @@ meta_pool <- function(yi, vi, sid = NULL) {
   C <- sum(w) - sum(w^2)/sum(w); tau2 <- max(0, (Q-df)/C)
   ws <- 1/(vi+tau2); est <- sum(ws*yi)/sum(ws); se <- sqrt(1/sum(ws))
   data.frame(est=est, lower=est-1.96*se, upper=est+1.96*se, k=k, tau2=tau2,
-             I2=max(0,(Q-df)/Q)*100, k_sections=n_sec)
+             I2=if (Q > 0) max(0,(Q-df)/Q)*100 else 0, k_sections=n_sec)
 }
 
 ## ============================================================================
-## 3. PER-SAMPLE analysis
+## 3. PER-SECTION analysis
 ## ============================================================================
 analyze_sample <- function(rds_path, sample_id, preservation, sr_version,
                            entity_id, out_dir, save_figs) {
@@ -363,7 +357,7 @@ analyze_sample <- function(rds_path, sample_id, preservation, sr_version,
     f <- intersect(c("CollagenMaturation","CollagenSynthesis","ECMCrosslink","Hypoxia"), mods_present)
     if (length(f)) fig(SpatialFeaturePlot(obj, features=f, ncol=2, image.alpha=.5),
                        file.path(out_dir,"04_modules.png"), 9, 8)
-    f <- intersect(c("P4HA1","myCAF","Hypoxia","Epithelial"), c(rownames(obj), mods_present))
+    f <- intersect(c("P4HA1","mCAF","Hypoxia","Epithelial"), c(rownames(obj), mods_present))
     if (length(f)) fig(SpatialFeaturePlot(obj, features=f, ncol=2, image.alpha=.5),
                        file.path(out_dir,"05_p4ha1_compartments.png"), 9, 8)
   }
@@ -401,7 +395,7 @@ analyze_sample <- function(rds_path, sample_id, preservation, sr_version,
     mk <- function(y) ggplot(expr, aes(P4HA1, .data[[y]], colour=factor(seurat_clusters))) +
       geom_point(size=.6, alpha=.6) + geom_smooth(method="loess", se=FALSE, colour="black", linewidth=.6) +
       labs(colour="Cluster", title=paste("P4HA1 vs", y)) + theme_minimal(base_size=11)
-    sc <- intersect(c("CollagenSynthesis","Hypoxia","myCAF","Epithelial"), colnames(expr))
+    sc <- intersect(c("CollagenSynthesis","Hypoxia","mCAF","Epithelial"), colnames(expr))
     if (length(sc) >= 1)
       fig(wrap_plots(lapply(sc, mk), ncol=2), file.path(out_dir,"10_scatter_P4HA1_modules.png"), 11, 8)
   }
@@ -415,12 +409,19 @@ analyze_sample <- function(rds_path, sample_id, preservation, sr_version,
       lw <- spdep::nb2listw(spdep::knn2nb(spdep::knearneigh(as.matrix(coords), k=6)), style="W")
       gm <- intersect(c("P4HA1","COL1A1","COL1A2","COL3A1","FN1","POSTN","SPARC",
                         "LOX","LOXL2","CA9","VEGFA","EPCAM","ACTA2"), rownames(obj))
+      ## v5.1: one gene failing (e.g. constant across spots) no longer drops the
+      ## whole table; it is logged and skipped.
       tab <- do.call(rbind, lapply(gm, function(g) {
         v <- FetchData(obj, vars=g, layer="data")[,1]; names(v) <- colnames(obj)
         v <- v[rownames(coords)]
-        mi <- spdep::moran.test(v, lw, zero.policy=TRUE, randomisation=TRUE)
+        if (anyNA(v) || stats::var(v) <= 0) {
+          log_msg("  Moran: %s skipped (constant or missing values)", g); return(NULL) }
+        mi <- tryCatch(spdep::moran.test(v, lw, zero.policy=TRUE, randomisation=TRUE),
+                       error = function(e) { log_msg("  Moran: %s skipped: %s", g, conditionMessage(e)); NULL })
+        if (is.null(mi)) return(NULL)
         data.frame(gene=g, morans_I=unname(mi$estimate[1]), expected=unname(mi$estimate[2]),
                    variance=unname(mi$estimate[3]), p_value=mi$p.value) }))
+      if (is.null(tab)) stop("no gene could be tested")
       tab[order(-tab$morans_I), ]
     }, error=function(e){ log_msg("  Moran skipped: %s", conditionMessage(e)); NULL })
     if (!is.null(moran)) write.csv(moran, file.path(out_dir,"15_morans_I.csv"), row.names=FALSE)
@@ -448,11 +449,11 @@ analyze_sample <- function(rds_path, sample_id, preservation, sr_version,
   }
   
   ## --- within-compartment correlations ---
-  if (all(c("Epithelial","myCAF") %in% colnames(expr))) {
+  if (all(c("Epithelial","mCAF") %in% colnames(expr))) {
     expr$Compartment <- with(expr, ifelse(
-      Epithelial > quantile(Epithelial,.66,na.rm=TRUE) & myCAF < quantile(myCAF,.5,na.rm=TRUE),
+      Epithelial > quantile(Epithelial,.66,na.rm=TRUE) & mCAF < quantile(mCAF,.5,na.rm=TRUE),
       "Epithelial-dominant",
-      ifelse(myCAF > quantile(myCAF,.66,na.rm=TRUE) & Epithelial < quantile(Epithelial,.5,na.rm=TRUE),
+      ifelse(mCAF > quantile(mCAF,.66,na.rm=TRUE) & Epithelial < quantile(Epithelial,.5,na.rm=TRUE),
              "CAF-dominant","Mixed")))
   } else expr$Compartment <- "Mixed"
   comp_cor <- expr %>% group_by(Compartment) %>%
@@ -478,7 +479,7 @@ analyze_sample <- function(rds_path, sample_id, preservation, sr_version,
       rho_unadjusted       = suppressWarnings(cor(expr$P4HA1, expr[[g]], method="spearman")),
       rho_given_Hypoxia    = if ("Hypoxia"    %in% colnames(expr)) pct(expr$P4HA1, expr[[g]], expr$Hypoxia)    else NA,
       rho_given_Epithelial = if ("Epithelial" %in% colnames(expr)) pct(expr$P4HA1, expr[[g]], expr$Epithelial) else NA,
-      rho_given_myCAF      = if ("myCAF"      %in% colnames(expr)) pct(expr$P4HA1, expr[[g]], expr$myCAF)      else NA)))
+      rho_given_mCAF       = if ("mCAF"      %in% colnames(expr)) pct(expr$P4HA1, expr[[g]], expr$mCAF)      else NA)))
     write.csv(partial_tbl, file.path(out_dir,"18_partial_correlations.csv"), row.names=FALSE)
   }
   
@@ -508,9 +509,7 @@ analyze_sample <- function(rds_path, sample_id, preservation, sr_version,
           file.path(out_dir,"14_dotplot.png"), 12, 6)
   }
   
-  ## --- per-sample logistic regression + forest ---
-  ## v3: fitted on an explicit data.frame so the coefficient is named "x"
-  ## rather than "expr[[m]]". Same estimate, easier to read in the summary.
+  ## --- per-section logistic regression + forest ---
   y <- as.integer(expr$P4HA1 > 0); logit <- NULL
   if (length(unique(y)) == 2) {
     logit <- do.call(rbind, lapply(intersect(LOGIT_MODULES, colnames(expr)), function(m){
@@ -532,7 +531,7 @@ analyze_sample <- function(rds_path, sample_id, preservation, sr_version,
               geom_errorbarh(aes(xmin=lo, xmax=hi), height=.25, linewidth=.9) +
               geom_point(size=5) +
               geom_text(aes(label=label), hjust=-.15, vjust=-1, size=3.6, colour="black", show.legend=FALSE) +
-              scale_x_log10(limits=c(.1,10), breaks=c(.2,.5,1,2,5)) +
+              scale_x_log10(breaks=c(.2,.5,1,2,5)) + coord_cartesian(xlim=c(.1,10)) +
               scale_colour_manual(values=c("Promotes P4HA1"="#B2182B","Suppresses P4HA1"="#2166AC")) +
               labs(x="Odds ratio for P4HA1 detection (log scale, 95% CI)", y=NULL, colour=NULL,
                    title="What predicts P4HA1 expression?",
@@ -548,9 +547,6 @@ analyze_sample <- function(rds_path, sample_id, preservation, sr_version,
   
   if (SAVE_ANALYZED_RDS) saveRDS(obj, file.path(out_dir, paste0(sample_id,"_analyzed.rds")))
   
-  ## v3 BUG FIX: this used to be df$n_spots <- nrow(expr), which silently
-  ## overwrote the per-CLUSTER n_spots column inside cl_summary with the total
-  ## spot count of the sample.
   tag <- function(df){ if (is.null(df)||nrow(df)==0) return(NULL)
     df$sample_id<-sample_id; df$entity_id<-entity_id; df$preservation<-preservation
     df$sr_version<-sr_version; df$n_spots_sample<-nrow(expr); df }
@@ -599,20 +595,25 @@ if (INPUT_MODE == "folder") {
 }
 
 ## ---------------------------------------------------------------------------
-## BRCA: match every file to the sample table, attach patient and status,
-## then keep primary tumours only unless INCLUDE_METASTASIS is TRUE.
+## Match every file to the sample table, attach patient and status, then keep
+## primary tumours only unless INCLUDE_METASTASIS is TRUE.
 ##   1. exact match of the file stem to sample_id
-##   2. otherwise, the table section whose sample_id is the longest prefix of
-##      the file stem, or vice versa (HTAN file names may add or drop a suffix)
+##   2. otherwise a table ID that is a prefix of the file stem, or vice versa,
+##      AND is followed by a delimiter (- _ .) in the longer one.
+##      v5 (C6): without the delimiter rule "X-U1" matched "X-U12".
 ##   Anything still unmatched halts the run unless ALLOW_UNLISTED_FILES.
 ## ---------------------------------------------------------------------------
+prefix_at_boundary <- function(long, short)
+  startsWith(long, short) & nchar(long) > nchar(short) &
+  grepl("^[-_.]", substring(long, nchar(short) + 1L))
+
 match_section <- function(stem) {
   if (stem %in% SAMPLES$sample_id) return(stem)
-  hit <- SAMPLES$sample_id[startsWith(stem, SAMPLES$sample_id) | startsWith(SAMPLES$sample_id, stem)]
+  ids <- SAMPLES$sample_id
+  hit <- ids[prefix_at_boundary(stem, ids) | prefix_at_boundary(ids, stem)]
   if (length(hit) == 1) return(hit)
-  if (length(hit) > 1) {
+  if (length(hit) > 1)
     stop("File ", stem, " matches several table sections: ", paste(hit, collapse = ", "))
-  }
   NA_character_
 }
 work$table_id <- vapply(work$sample_id, match_section, character(1))
@@ -624,13 +625,19 @@ if (length(unlisted)) {
          "Remove them from DOWNLOAD_DIR or set ALLOW_UNLISTED_FILES <- TRUE.")
   work <- work[!is.na(work$table_id), , drop = FALSE]
 }
+inexact <- work$sample_id != work$table_id
+if (any(inexact))
+  log_msg("Matched by prefix (check these): %s",
+          paste(sprintf("%s -> %s", work$sample_id[inexact], work$table_id[inexact]), collapse = "; "))
 if (anyDuplicated(work$table_id))
   stop("Two files map to the same table section: ",
        paste(unique(work$table_id[duplicated(work$table_id)]), collapse = ", "))
 tbl <- SAMPLES[match(work$table_id, SAMPLES$sample_id), ]
 work$patient_id         <- tbl$patient_id
 work$primary_metastasis <- tbl$primary_metastasis
-if (!all(tbl$cancer_type == "BRCA")) stop("Non-BRCA sections in the work list.")
+if ("cancer_type" %in% names(tbl) && !all(tbl$cancer_type == "BRCA"))
+  stop("Non-BRCA sections in the work list: ",
+       paste(work$sample_id[tbl$cancer_type != "BRCA"], collapse = ", "))
 
 ## the analysis keys on the file stem, so map the file stem to the patient too
 SAMPLE_PATIENT <- c(SAMPLE_PATIENT, setNames(work$patient_id, work$sample_id))
@@ -643,7 +650,6 @@ if (!INCLUDE_METASTASIS && n_met) {
   work <- work[work$primary_metastasis == "Primary", , drop = FALSE]
 }
 
-## how much of the expected cohort is actually here
 exp_tbl <- if (INCLUDE_METASTASIS) SAMPLES else SAMPLES[SAMPLES$primary_metastasis == "Primary", ]
 missing_secs <- setdiff(exp_tbl$sample_id, work$table_id)
 log_msg("Cohort: %d of %d expected sections, %d of %d expected patients.",
@@ -675,7 +681,7 @@ all_partial<-bind(acc$partial_cor); all_logit<-bind(acc$logit)
 all_cluster<-bind(acc$cl_summary); all_moran<-bind(acc$moran)
 
 ## ============================================================================
-## 5. Save combined per-sample tables + run status
+## 5. Save combined per-section tables + run status
 ## ============================================================================
 agg <- file.path(OUT_ROOT,"aggregate"); dir.create(agg, showWarnings=FALSE, recursive=TRUE)
 write.csv(all_global,  file.path(agg,"per_sample_global_correlations.csv"), row.names=FALSE)
@@ -686,16 +692,13 @@ write.csv(all_logit,   file.path(agg,"per_sample_logistic.csv"), row.names=FALSE
 write.csv(all_cluster, file.path(agg,"per_sample_cluster_summary.csv"), row.names=FALSE)
 write.csv(all_moran,   file.path(agg,"per_sample_morans_I.csv"), row.names=FALSE)
 write.csv(status,      file.path(agg,"run_status.csv"), row.names=FALSE)
-## BRCA: the section -> patient map used for pooling, read by sections 21 and 22
+## the section -> patient map used for pooling, read by sections 21 and 22
 write.csv(work[, c("sample_id", "table_id", "patient_id", "primary_metastasis")],
           file.path(agg, "cohort_sections.csv"), row.names = FALSE)
-log_msg("Samples ok: %d / %d", sum(status$status=="ok"), nrow(status))
+log_msg("Sections ok: %d / %d", sum(status$status=="ok"), nrow(status))
 
-## BRCA: a section that failed the basic per-section analysis (for example
-## HT397B1-S1H3A1U61Bp1, whose object has no P4HA1) has no outcome for any later
-## model. Drop it from the work list here, once and visibly, so no later section
-## opens it again. Sections 9 to 26 already skipped such sections one by one;
-## section 12.0 did not and crashed on it.
+## A section that failed the per-section analysis (for example an object with
+## no P4HA1) has no outcome for any later model. Drop it here, once and visibly.
 failed_secs <- status$sample_id[status$status != "ok"]
 if (length(failed_secs)) {
   log_msg("Removed from the work list for sections 6 onward (failed in section 3): %s",
@@ -706,14 +709,14 @@ log_msg("Work list for the rest of the run: %d sections, %d patients.",
         nrow(work), length(unique(work$patient_id)))
 
 ## ============================================================================
-## 6. CROSS-SAMPLE pooled forest
+## 6. CROSS-SECTION pooled forest
 ## ============================================================================
 if (nrow(all_logit) > 0) {
   pooled <- all_logit %>% group_by(module) %>%
     group_modify(~ meta_pool(.x$log_OR, .x$SE^2, .x$sample_id)) %>% ungroup() %>%
     mutate(OR=exp(est), lower=exp(lower), upper=exp(upper),
            direction=ifelse(OR>1,"Promotes P4HA1","Suppresses P4HA1"),
-           label=sprintf("OR %.2f  (%d %s, I2=%.0f%%)", OR, k, K_UNIT, I2)) %>%   # BRCA: k unit
+           label=sprintf("OR %.2f  (%d %s, I2=%.0f%%)", OR, as.integer(k), K_UNIT, I2)) %>%
     arrange(OR) %>% mutate(module=factor(module, levels=module))
   write.csv(pooled, file.path(agg,"POOLED_logistic_forest.csv"), row.names=FALSE)
   fig(ggplot(pooled, aes(OR, module, colour=direction)) +
@@ -721,43 +724,44 @@ if (nrow(all_logit) > 0) {
         geom_errorbarh(aes(xmin=lower, xmax=upper), height=.25, linewidth=.9) +
         geom_point(size=5) +
         geom_text(aes(label=label), hjust=-.1, vjust=-1.1, size=3.4, colour="black", show.legend=FALSE) +
-        scale_x_log10(limits=c(.1,10), breaks=c(.2,.5,1,2,5)) +
+        scale_x_log10(breaks=c(.2,.5,1,2,5)) + coord_cartesian(xlim=c(.1,10)) +
         scale_colour_manual(values=c("Promotes P4HA1"="#B2182B","Suppresses P4HA1"="#2166AC")) +
         labs(x="Pooled odds ratio for P4HA1 detection (log scale, 95% CI)", y=NULL, colour=NULL,
              title="What predicts P4HA1 across tumours?",
-             subtitle=sprintf("Random-effects meta-analysis of %d patients (%d sections)",   # BRCA
+             subtitle=sprintf("Random-effects meta-analysis of %d patients (%d sections)",
                               length(unique(patient_of(all_logit$sample_id))), length(unique(all_logit$sample_id))),
-             caption="Per-sample logistic regression, DerSimonian-Laird pooled") +
+             caption="Per-section logistic regression, DerSimonian-Laird pooled") +
         theme_minimal(base_size=13) +
         theme(legend.position="top", panel.grid.minor=element_blank(), plot.title=element_text(face="bold")),
       file.path(agg,"FOREST_pooled.png"), 9, 5)
 }
 
 ## ============================================================================
-## 7. Consistency boxplot: per-tumour P4HA1 <-> module correlations
-##
-##   BRCA NOTE: the reasoning in this header was written for the PDAC
-##   cohort. Any statement about what the data showed, which module worked,
-##   or how many tumours were usable describes PDAC, not BRCA. The code
-##   below is unchanged except where tagged "BRCA:".
-##    KEPT DELIBERATELY. This is the only figure showing per-tumour SPREAD
-##    rather than a pooled average. In PDAC, with tau ~0.7-1.0 and every
-##    prediction interval crossing 1, "how variable is this across tumours?" is the first
-##    question a reader will ask, and this answers it in one glance.
-##    Section 12 renders a publication-grade version of this as Figure 5.
+## 7. Consistency boxplot: P4HA1 <-> module correlations, one point per unit
+##    The only figure showing SPREAD across tumours rather than a pooled
+##    average. v5 (C4): one value per patient (mean over its sections).
 ## ============================================================================
 if (nrow(all_module) > 0) {
-  mod_summary <- all_module %>% group_by(module) %>%
-    summarise(median_rho=median(rho, na.rm=TRUE), frac_positive=mean(rho>0, na.rm=TRUE),
-              n_samples=dplyr::n(), .groups="drop") %>% arrange(desc(median_rho))
+  mod_unit <- all_module %>% filter(is.finite(rho)) %>%
+    mutate(unit = unit_of(sample_id)) %>%
+    group_by(module, unit) %>%
+    summarise(rho = mean(rho), n_sections = dplyr::n(), .groups = "drop")
+  mod_summary <- mod_unit %>% group_by(module) %>%
+    summarise(median_rho = median(rho), frac_positive = mean(rho > 0),
+              n_units = dplyr::n(), n_sections = sum(n_sections), .groups = "drop") %>%
+    arrange(desc(median_rho))
   write.csv(mod_summary, file.path(agg,"module_correlation_summary.csv"), row.names=FALSE)
   ord <- mod_summary$module[order(mod_summary$median_rho)]
-  fig(ggplot(all_module, aes(factor(module, levels=ord), rho)) +
+  ## v5.2: CollagenMaturation contains P4HA1 (circular); in the CSV, not drawn
+  fig(ggplot(mod_unit[mod_unit$module != "CollagenMaturation", ],
+             aes(factor(module, levels=setdiff(ord, "CollagenMaturation")), rho)) +
         geom_hline(yintercept=0, linetype="dashed", colour="grey60") +
         geom_boxplot(outlier.size=.5, fill="grey90") +
-        geom_jitter(width=.15, size=.6, alpha=.4) + coord_flip() +
-        labs(x=NULL, y="Per-section Spearman rho (P4HA1 vs module)",
-             title="Consistency of P4HA1 associations across tumours") +
+        geom_jitter(width=.15, size=.9, alpha=.5) + coord_flip() +
+        labs(x=NULL, y=sprintf("Per-%s Spearman rho (P4HA1 vs module)", UNIT_LABEL),
+             title="Consistency of P4HA1 associations across tumours",
+             subtitle=sprintf("One point per %s (mean of its sections), n = %d",
+                              UNIT_LABEL, dplyr::n_distinct(mod_unit$unit))) +
         theme_minimal(base_size=12),
       file.path(agg,"BOX_module_correlations.png"), 8, 5)
 }
@@ -766,13 +770,8 @@ log_msg("Core cohort analysis done. Aggregate outputs in: %s", normalizePath(agg
 
 ## ============================================================================
 ## 8. COHORT within-compartment analysis
-##
-##   BRCA NOTE: the reasoning in this header was written for the PDAC
-##   cohort. Any statement about what the data showed, which module worked,
-##   or how many tumours were usable describes PDAC, not BRCA. The code
-##   below is unchanged except where tagged "BRCA:".
-##    KEPT. Answers a different question from the hypoxia narrative and gave a
-##    real result in PDAC (COL3A1 surviving BH correction). Not spare parts.
+##    v5 (C4): summaries and the paired CAF vs epithelial test use one value
+##    per patient, so serial sections are not counted as independent pairs.
 ## ============================================================================
 COMPARTMENT_MIN_SPOTS <- 20
 COMPARTMENT_LEVELS    <- c("Epithelial-dominant","Mixed","CAF-dominant")
@@ -783,7 +782,8 @@ comp_csv <- file.path(agg, "per_sample_compartment_correlations.csv")
 if (!file.exists(comp_csv)) {
   log_msg("Cohort compartment step skipped: %s not found", comp_csv)
 } else {
-  cc <- read.csv(comp_csv, stringsAsFactors = FALSE, check.names = FALSE)
+  cc <- tryCatch(read.csv(comp_csv, stringsAsFactors = FALSE, check.names = FALSE),
+                 error = function(e) data.frame())
   needed <- c("sample_id","Compartment","gene","rho")
   if (!all(needed %in% colnames(cc))) {
     log_msg("Cohort compartment step skipped: missing columns (%s)",
@@ -805,11 +805,16 @@ if (!file.exists(comp_csv)) {
     if (nrow(cc) == 0) {
       log_msg("Cohort compartment step skipped: no rows left after cleaning/filtering")
     } else {
-      cc$gene <- factor(cc$gene, levels = sort(unique(cc$gene)))
+      ## one value per unit, gene and compartment
+      cc_u <- cc %>% mutate(unit = unit_of(sample_id)) %>%
+        group_by(gene, Compartment, unit) %>%
+        summarise(rho = mean(rho), n_sections = dplyr::n(), .groups = "drop")
+      cc_u$gene <- factor(cc_u$gene, levels = sort(unique(as.character(cc_u$gene))))
       
-      comp_summary <- cc %>%
+      comp_summary <- cc_u %>%
         group_by(gene, Compartment) %>%
-        summarise(n_tumours     = dplyr::n_distinct(sample_id),
+        summarise(n_units       = dplyr::n(),
+                  n_sections    = sum(n_sections),
                   median_rho    = median(rho, na.rm = TRUE),
                   q25           = unname(quantile(rho, .25, na.rm = TRUE)),
                   q75           = unname(quantile(rho, .75, na.rm = TRUE)),
@@ -818,34 +823,33 @@ if (!file.exists(comp_csv)) {
         arrange(gene, Compartment)
       write.csv(comp_summary, file.path(agg, "COHORT_compartment_summary.csv"), row.names = FALSE)
       
-      fig(ggplot(cc, aes(Compartment, rho, fill = Compartment)) +
+      fig(ggplot(cc_u, aes(Compartment, rho, fill = Compartment)) +
             geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
             geom_boxplot(outlier.size = .4, alpha = .85) +
-            geom_jitter(width = .15, size = .5, alpha = .35) +
+            geom_jitter(width = .15, size = .6, alpha = .4) +
             facet_wrap(~ gene, ncol = 5) +
             scale_fill_manual(values = c("Epithelial-dominant" = "#2166AC",
                                          "Mixed"               = "grey75",
                                          "CAF-dominant"        = "#B2182B"), drop = FALSE) +
-            labs(x = NULL, y = "Per-tumour Spearman rho (P4HA1 vs gene)",
+            labs(x = NULL, y = sprintf("Per-%s Spearman rho (P4HA1 vs gene)", UNIT_LABEL),
                  title = "P4HA1 to ECM correlation by tissue compartment",
-                 subtitle = sprintf("Across %d tumours; compartments with < %d spots removed",
-                                    dplyr::n_distinct(cc$sample_id), COMPARTMENT_MIN_SPOTS)) +
+                 subtitle = sprintf("One point per %s (%d); compartments with < %d spots removed",
+                                    UNIT_LABEL, dplyr::n_distinct(cc_u$unit), COMPARTMENT_MIN_SPOTS)) +
             theme_minimal(base_size = 11) +
             theme(legend.position = "none",
                   axis.text.x = element_text(angle = 30, hjust = 1),
                   strip.text  = element_text(face = "bold")),
           file.path(agg, "BOX_compartment_correlations.png"), 12, 7)
       
-      test_rows <- lapply(levels(cc$gene), function(g) {
-        sub <- cc[cc$gene == g & as.character(cc$Compartment) %in% CONTRAST,
-                  c("sample_id","Compartment","rho")]
+      test_rows <- lapply(levels(cc_u$gene), function(g) {
+        sub <- cc_u[cc_u$gene == g & as.character(cc_u$Compartment) %in% CONTRAST,
+                    c("unit","Compartment","rho")]
         empty <- data.frame(gene = g, n_pairs = 0L, median_CAF = NA_real_,
                             median_Epi = NA_real_, median_diff = NA_real_,
                             W = NA_real_, p = NA_real_)
         if (nrow(sub) == 0) return(empty)
         sub$Compartment <- factor(as.character(sub$Compartment), levels = CONTRAST)
-        m <- tapply(sub$rho, list(sub$sample_id, sub$Compartment),
-                    function(x) mean(x, na.rm = TRUE))
+        m <- tapply(sub$rho, list(sub$unit, sub$Compartment), function(x) mean(x, na.rm = TRUE))
         if (!all(CONTRAST %in% colnames(m))) return(empty)
         caf <- m[, "CAF-dominant"]; epi <- m[, "Epithelial-dominant"]
         keep <- is.finite(caf) & is.finite(epi)
@@ -863,26 +867,24 @@ if (!file.exists(comp_csv)) {
                    W = unname(wt$statistic), p = wt$p.value)
       })
       comp_test <- do.call(rbind, test_rows)
+      comp_test$pair_unit <- UNIT_LABEL
       comp_test$p_adj_BH <- p.adjust(comp_test$p, method = "BH")
       comp_test <- comp_test[order(comp_test$p_adj_BH, na.last = TRUE), ]
       write.csv(comp_test, file.path(agg, "COHORT_compartment_test.csv"), row.names = FALSE)
       
-      log_msg("Cohort compartment analysis done: %d summary rows, %d genes tested",
-              nrow(comp_summary), nrow(comp_test))
+      log_msg("Cohort compartment analysis done: %d summary rows, %d genes tested (pairs = %ss)",
+              nrow(comp_summary), nrow(comp_test), UNIT_LABEL)
     }
   }
 }
 
 ## ============================================================================
 ## 9. ENO1 SENSITIVITY CHECK   [single pass over the cohort]
-##
-##   BRCA NOTE: the reasoning in this header was written for the PDAC
-##   cohort. Any statement about what the data showed, which module worked,
-##   or how many tumours were usable describes PDAC, not BRCA. The code
-##   below is unchanged except where tagged "BRCA:".
-##    The object is loaded ONCE and both hypoxia gene sets are scored from it.
+##    ENO1 is glycolytic and ubiquitous; the hypoxia module is fitted with and
+##    without it. The object is loaded once and both sets are scored from it.
 ## ============================================================================
-HYPOXIA_7 <- c("VEGFA","CA9","SLC2A1","LDHA","BNIP3","ANGPTL4","ENO1")
+## v6: the module in use, with and without ENO1
+HYPOXIA_7 <- MODULES$Hypoxia                 # name kept so nothing below changes
 HYPOXIA_6 <- setdiff(HYPOXIA_7, "ENO1")
 
 hypoxia_logit_both <- function(rds_path, sid) {
@@ -895,9 +897,9 @@ hypoxia_logit_both <- function(rds_path, sid) {
     g <- intersect(hyp_genes, rownames(obj))
     if (length(g) < 2) return(NULL)
     nm  <- paste0("HypTmp_", tag)
-    set.seed(SEED)                                           # v3
+    set.seed(SEED)
     o <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
-                                 assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
+                                            assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
                   error = function(e) NULL)
     col <- paste0(nm, "1")
     if (is.null(o) || !col %in% colnames(o@meta.data)) return(NULL)
@@ -925,44 +927,36 @@ sens <- lapply(seq_len(nrow(work)), function(i) {
 })
 sens <- dplyr::bind_rows(sens)
 
-pooled_sens <- sens %>%
-  dplyr::group_by(variant) %>%
-  dplyr::group_modify(~ meta_pool(.x$log_OR, .x$SE^2, .x$sample_id)) %>%
-  dplyr::ungroup() %>%
-  dplyr::mutate(OR = exp(est), lower = exp(lower), upper = exp(upper))
-
+if (nrow(sens) == 0) {                                   # v5 (C8)
+  log_msg("ENO1 check: no section produced a fit.")
+  pooled_sens <- data.frame()
+} else {
+  pooled_sens <- sens %>%
+    dplyr::group_by(variant) %>%
+    dplyr::group_modify(~ meta_pool(.x$log_OR, .x$SE^2, .x$sample_id)) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(OR = exp(est), lower = exp(lower), upper = exp(upper))
+}
 write.csv(sens,        file.path(agg, "ENO1_sensitivity_per_sample.csv"), row.names = FALSE)
 write.csv(pooled_sens, file.path(agg, "ENO1_sensitivity_pooled.csv"),     row.names = FALSE)
 
 cat("\n=== Hypoxia pooled OR: ENO1 sensitivity ===\n")
 for (v in c("with_ENO1", "without_ENO1")) {
-  r <- pooled_sens[pooled_sens$variant == v, ]
+  r <- if (nrow(pooled_sens)) pooled_sens[pooled_sens$variant == v, ] else pooled_sens
   if (nrow(r) == 1)
-    cat(sprintf("  %-13s OR = %.2f  (95%% CI %.2f-%.2f)  k=%d  I2=%.0f%%\n",
-                v, r$OR, r$lower, r$upper, r$k, r$I2))
+    cat(sprintf("  %-13s OR = %.2f  (95%% CI %.2f-%.2f)  k=%d %s  I2=%.0f%%\n",
+                v, r$OR, r$lower, r$upper, as.integer(r$k), K_UNIT, r$I2))
 }
 cat("\nIf the two ORs are close, ENO1 is not distorting the hypoxia result.\n")
 
 ## ============================================================================
 ## 10. STRATIFIED MULTIVARIABLE MODEL
-##
-##   BRCA NOTE: the reasoning in this header was written for the PDAC
-##   cohort. Any statement about what the data showed, which module worked,
-##   or how many tumours were usable describes PDAC, not BRCA. The code
-##   below is unchanged except where tagged "BRCA:".
-##     Question (Valerio): at the SAME level of hypoxia, does collagen (+ iCAF)
-##     still track P4HA1, or is the collagen signal just hypoxia in disguise?
-##
+##     At the SAME level of hypoxia, does collagen (+ iCAF) still track P4HA1?
 ##       (A) ADJUSTED     P(P4HA1>0) ~ Hypoxia + CollagenSynthesis + iCAF
-##       (B) STRATIFIED   within within-sample hypoxia tertiles (RELATIVE, so
-##                        "high" is not the same absolute level across tumours)
-##       (C) INTERACTION  Hypoxia * CollagenSynthesis  <- better-powered test
-##                        slope(z_H) = beta_C + beta_HC * z_H
-##
-##     Not circular: no predictor contains P4HA1. Collinearity is written out.
-##     NOTE: predictors here are NOT standardised, so these numbers are not
-##     comparable to sections 13, 15 and 16, which are. Section 13 says the same
-##     thing in its own header. Do not put them in one table.
+##       (B) STRATIFIED   within within-section hypoxia tertiles (relative)
+##       (C) INTERACTION  Hypoxia * CollagenSynthesis
+##     Predictors here are NOT standardised, so these numbers are not
+##     comparable to sections 13, 15 and 16, which are.
 ## ============================================================================
 STRAT_MODULES   <- c("Hypoxia", "CollagenSynthesis", "iCAF")
 HYPOXIA_N_BINS  <- 3
@@ -979,10 +973,10 @@ strat_expr_one <- function(rds_path) {
   for (nm in STRAT_MODULES) {
     g <- intersect(MODULES[[nm]], rownames(obj))
     if (length(g) < 2) return(NULL)
-    set.seed(SEED)                                           # v3
+    set.seed(SEED)
     obj <- tryCatch(
       add_module_score_fallback(obj, features = list(g), name = nm,
-                     assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
+                                assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
       error = function(e) NULL)
     if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) return(NULL)
     names(obj@meta.data)[names(obj@meta.data) == paste0(nm, "1")] <- nm
@@ -1015,7 +1009,7 @@ fit_strat_one <- function(d, sid) {
                                  p = s[tm, "Pr(>|z|)"], row.names = NULL)
   }
   
-  ## (B) stratified within within-sample hypoxia tertiles
+  ## (B) stratified within within-section hypoxia tertiles
   br <- tryCatch(quantile(d$Hypoxia, probs = seq(0, 1, length.out = HYPOXIA_N_BINS + 1),
                           na.rm = TRUE), error = function(e) NULL)
   if (!is.null(br) && length(unique(br)) == HYPOXIA_N_BINS + 1) {
@@ -1037,8 +1031,7 @@ fit_strat_one <- function(d, sid) {
   }
   
   ## (C) interaction. Exports ALL coefficients so beta_C from THIS model is
-  ##     available for the crossover z_H* = -beta_C/beta_HC. That beta_C is a
-  ##     DIFFERENT parameter from the additive model's and must not be swapped.
+  ##     available for the crossover z_H* = -beta_C/beta_HC.
   fi <- tryCatch(glm(y ~ Hypoxia * CollagenSynthesis + iCAF, data = d, family = binomial()),
                  error = function(e) NULL)
   if (!is.null(fi)) {
@@ -1073,10 +1066,10 @@ write.csv(int_all, file.path(agg, "STRAT_interaction_per_sample.csv"),  row.name
 write.csv(col_all, file.path(agg, "STRAT_predictor_collinearity.csv"),  row.names = FALSE)
 
 if (nrow(col_all) > 0) {
-  cat("\n=== Predictor collinearity (median Spearman across tumours) ===\n")
-  cat(sprintf("  Hypoxia vs Collagen : %.2f\n", median(col_all$Hyp_Col,  na.rm = TRUE)))
-  cat(sprintf("  Hypoxia vs iCAF     : %.2f\n", median(col_all$Hyp_iCAF, na.rm = TRUE)))
-  cat(sprintf("  Collagen vs iCAF    : %.2f\n", median(col_all$Col_iCAF, na.rm = TRUE)))
+  cat(sprintf("\n=== Predictor collinearity (median Spearman across %ss) ===\n", UNIT_LABEL))
+  cat(sprintf("  Hypoxia vs Collagen : %.2f\n", unit_median(col_all$Hyp_Col,  col_all$sample_id)))
+  cat(sprintf("  Hypoxia vs iCAF     : %.2f\n", unit_median(col_all$Hyp_iCAF, col_all$sample_id)))
+  cat(sprintf("  Collagen vs iCAF    : %.2f\n", unit_median(col_all$Col_iCAF, col_all$sample_id)))
   cat("  (|rho| approaching ~0.7+ means the adjusted ORs are hard to separate.)\n")
 }
 
@@ -1105,8 +1098,8 @@ if (nrow(int_all) > 0) {
   it_row <- int_pooled[grepl(":", int_pooled$term), ]
   cat("\n=== Hypoxia x Collagen interaction (pooled) ===\n")
   if (nrow(it_row) == 1) {
-    cat(sprintf("  interaction coefficient = %+.4f  (OR scale %.2f, 95%% CI %.2f-%.2f)  k=%d  I2=%.0f%%\n",
-                it_row$est, it_row$OR, it_row$lower, it_row$upper, it_row$k, it_row$I2))
+    cat(sprintf("  interaction coefficient = %+.4f  (OR scale %.2f, 95%% CI %.2f-%.2f)  k=%d %s  I2=%.0f%%\n",
+                it_row$est, it_row$OR, it_row$lower, it_row$upper, as.integer(it_row$k), K_UNIT, it_row$I2))
     if (it_row$lower > 1 || it_row$upper < 1)
       cat(sprintf("  CI EXCLUDES 1 -> the collagen effect DOES change with hypoxia (%s).\n",
                   if (it_row$est > 0) "stronger as hypoxia rises" else "weaker as hypoxia rises"))
@@ -1118,7 +1111,7 @@ if (nrow(int_all) > 0) {
   bHC <- it_row$est
   if (length(bC) == 1 && length(bHC) == 1 && is.finite(bC) && is.finite(bHC) && bHC != 0) {
     cat(sprintf("\n  beta_C (interaction model) = %+.4f ; beta_HC = %+.4f\n", bC, bHC))
-    cat(sprintf("  Collagen slope = beta_C + beta_HC * z_H\n"))
+    cat("  Collagen slope = beta_C + beta_HC * z_H\n")
     cat(sprintf("  Crossover z_H* = %+.3f  (ratio of two pooled estimates; no CI)\n", -bC / bHC))
     cat("  Check against HYPOXIA_SCORE_RANGE.csv: if z_H* lies outside the observed\n")
     cat("  range, the crossover is an extrapolation and should not be reported.\n")
@@ -1128,63 +1121,36 @@ if (nrow(int_all) > 0) {
 log_msg("Stratified multivariable step done.")
 
 ## ============================================================================
-## 11. PROTEOSTASIS MODULES  (Valerio's Part 2, exploratory)
+## 11. PROTEOSTASIS MODULES  (exploratory)
 ##
-##   BRCA NOTE: the reasoning in this header was written for the PDAC
-##   cohort. Any statement about what the data showed, which module worked,
-##   or how many tumours were usable describes PDAC, not BRCA. The code
-##   below is unchanged except where tagged "BRCA:".
+##     HYPOTHESIS (not established): P4H may also retain the molecule in the
+##     ER for quality control, so P4HA1 may track proteostasis rather than
+##     collagen.
 ##
-##     HYPOTHESIS (his, not established): P4H is bifunctional - it hydroxylates
-##     AND acts as a clamp retaining the molecule in the ER so the QC system can
-##     decide degradation vs export. If so, P4HA1 may track proteostasis rather
-##     than collagen.
-##
-##     MODULES (audit re-runs at run time and can halt the section):
+##     MODULES (the audit re-runs at run time and can halt the section):
 ##       ERstress       27 core ER-stress/UPR genes hand-selected from
 ##                      HALLMARK_UNFOLDED_PROTEIN_RESPONSE (MSigDB M5922).
-##                      NOT the full 113-gene hallmark: only ~24% of it is core
-##                      ER stress, the rest mRNA decay (19), ribosome biogenesis
-##                      (12), translation (10). In hypoxic tissue, where
-##                      translation is globally suppressed, the whole hallmark
-##                      would largely measure translational machinery.
-##                      VEGFA REMOVED: it is in the hallmark AND in the Hypoxia
-##                      module here, so keeping it would manufacture correlation.
-##                      VERIFIED against the MSigDB file: all 27 are present in
-##                      the 113-gene hallmark, and VEGFA is the only overlap
-##                      with the Hypoxia module.
-##       ERstressStrict the above minus HYOU1, DDIT4, ERO1A (24 genes). Those
-##                      three are hypoxia-responsive and the headline finding is
-##                      "ER stress predicts P4HA1 in hypoxic regions", which is
-##                      exactly what they could manufacture. Every model is
-##                      fitted with BOTH variants; the strict one is primary.
-##                      Section 14 confirmed ERO1A is the symbol actually
-##                      present in these objects (not the legacy ERO1L), so the
-##                      strict module really does drop three genes.
-##       ERAD           GOBP_ERAD_PATHWAY (MSigDB M15534, GO:0036503).
-##                      VERIFIED: exact match to the MSigDB file, 113 unique
-##                      genes both sides. 9 shared with ERstress, stripped
-##                      below, leaving 104.
+##                      VEGFA removed: it is also in the Hypoxia module.
+##       ERstressStrict the above minus HYOU1, DDIT4, ERO1A (hypoxia-
+##                      responsive). Every model is fitted with BOTH; the
+##                      strict one is primary. Section 14 reports whether the
+##                      objects carry ERO1A or the legacy ERO1L.
+##       ERAD           GOBP_ERAD_PATHWAY (MSigDB M15534), with the genes it
+##                      shares with ERstress stripped.
 ##
-##     STILL OPEN: the exclusion criterion is applied inconsistently. HYOU1,
-##     DDIT4 and ERO1A are removed as hypoxia-responsive, but ATF4 and CHAC1
-##     are PERK-responsive and were kept. That is not a principled line. Decide
-##     the rule and apply it, or say plainly that the strict set is defined by
-##     HIF-responsiveness only.
+##     OPEN: HYOU1, DDIT4, ERO1A are removed as hypoxia-responsive but ATF4
+##     and CHAC1 (PERK-responsive) are kept. Section 23 reports whether that
+##     choice moves the result.
 ##
-##     NOT INCLUDED - the retention/chaperone arm. GO:0034663 "endoplasmic
-##     reticulum chaperone complex" is DEFINED to include protein disulfide
-##     isomerase, which is P4HB, the beta subunit of P4HA1's own enzyme.
-##     Scoring it would recreate the CollagenMaturation circularity in a form
-##     that looks legitimate. Needs Valerio's ruling on P4HB and on PPIB.
+##     NOT INCLUDED: the ER chaperone complex (GO:0034663) is defined to
+##     include P4HB, the beta subunit of P4HA1's own enzyme.
 ##
-##     GENE THRESHOLD is proportional, max(2, 30% of the set). A flat 5-gene
-##     minimum is trivial for 104-gene ERAD but brutal for 6-gene iCAF. In PDAC it
-##     dropped one tumour (HT270P2, 4/6 iCAF genes), giving k=22 instead of 23.
+##     Gene threshold: max(2, 30% of the set), so a 6-gene and a 104-gene set
+##     are held to the same proportion.
 ##
 ##     Figures live in section 12 and use the STRICT variant only.
 ## ============================================================================
-PROT_DISJOINT   <- TRUE   # strip the 9 genes shared with ERstress out of ERAD
+PROT_DISJOINT   <- TRUE   # strip the genes shared with ERstress out of ERAD
 PROT_MIN_SPOTS  <- 30
 PROT_MIN_FRAC   <- 0.30
 PROT_MIN_ABS    <- 2
@@ -1282,14 +1248,14 @@ prot_expr_one <- function(rds_path, sid) {
     need <- min_genes_for(full)
     cov[[nm]] <- c(n_found = length(g), n_total = length(full), n_required = need)
     if (length(g) < need) {
-      log_msg("  %s: only %d/%d genes of %s detected (need %d) -> sample skipped",
+      log_msg("  %s: only %d/%d genes of %s detected (need %d) -> section skipped",
               sid, length(g), length(full), nm, need)
       return(NULL)
     }
-    set.seed(SEED)                                           # v3
+    set.seed(SEED)
     obj <- tryCatch(
       add_module_score_fallback(obj, features = list(g), name = nm,
-                     assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
+                                assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
       error = function(e) NULL)
     if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) return(NULL)
     names(obj@meta.data)[names(obj@meta.data) == paste0(nm, "1")] <- nm
@@ -1297,8 +1263,8 @@ prot_expr_one <- function(rds_path, sid) {
   d <- FetchData(obj, vars = c("P4HA1", SCORE_MODULES), layer = "data")
   d$y <- as.integer(d$P4HA1 > 0)
   attr(d, "coverage") <- do.call(rbind, lapply(names(cov), function(k)
-    data.frame(sample_id = sid, module = k, n_found = cov[[k]]["n_found"],
-               n_total = cov[[k]]["n_total"], n_required = cov[[k]]["n_required"])))
+    data.frame(sample_id = sid, module = k, n_found = unname(cov[[k]]["n_found"]),
+               n_total = unname(cov[[k]]["n_total"]), n_required = unname(cov[[k]]["n_required"]))))
   d
 }
 
@@ -1323,7 +1289,7 @@ coefs_of <- function(fit, keep = NULL) {
 }
 
 ## ---------------------------------------------------------------------------
-## 11.2  fit every model for one sample, for BOTH ERstress variants
+## 11.2  fit every model for one section, for BOTH ERstress variants
 ## ---------------------------------------------------------------------------
 fit_prot_one <- function(d, sid) {
   out <- list(marginal=NULL, adjusted=NULL, stratified=NULL,
@@ -1333,7 +1299,6 @@ fit_prot_one <- function(d, sid) {
   
   var_cor <- suppressWarnings(cor(d$ERstress, d$ERstressStrict, method = "spearman"))
   
-  ## `strat` not `str` - the old name shadowed base::str() inside here
   marg <- list(); adj <- list(); strat <- list(); int <- list()
   vifs <- list(); cols <- list()
   
@@ -1350,11 +1315,7 @@ fit_prot_one <- function(d, sid) {
                              ERstress_variants_cor = var_cor)
     v <- vif_calc(d, preds); v$sample_id <- sid; v$variant <- ES; vifs[[ES]] <- v
     
-    ## (A) MARGINAL, module alone.
-    ## v3: ERAD is now fitted under BOTH variants. The estimate is identical
-    ## either way (ERAD alone does not depend on which ERstress variant exists),
-    ## but it means filtering the pooled CSV on the primary variant no longer
-    ## silently drops the ERAD row.
+    ## (A) MARGINAL, module alone (ERAD fitted under both variants; identical)
     mods_alone <- c(ES, "ERAD")
     marg[[ES]] <- do.call(rbind, lapply(mods_alone, function(m) {
       f <- tryCatch(glm(as.formula(paste("y ~", m)), data = d, family = binomial()),
@@ -1369,7 +1330,7 @@ fit_prot_one <- function(d, sid) {
     r <- coefs_of(fa, keep = preds)
     if (!is.null(r)) adj[[ES]] <- cbind(sample_id = sid, variant = ES, r)
     
-    ## (C) STRATIFIED by within-sample hypoxia tertiles
+    ## (C) STRATIFIED by within-section hypoxia tertiles
     br <- tryCatch(quantile(d$Hypoxia, probs = seq(0,1,length.out = PROT_N_BINS+1), na.rm = TRUE),
                    error = function(e) NULL)
     if (!is.null(br) && length(unique(br)) == PROT_N_BINS + 1) {
@@ -1439,41 +1400,46 @@ write.csv(pcol_all, file.path(agg,"PROT_collinearity_per_sample.csv"),row.names=
 write.csv(cov_all,  file.path(agg,"PROT_gene_coverage.csv"),          row.names=FALSE)
 
 n_in <- if (nrow(padj_all)) dplyr::n_distinct(padj_all$sample_id) else 0
-cat(sprintf("\n=== Samples contributing: %d of %d ===\n", n_in, nrow(work)))
+cat(sprintf("\n=== Sections contributing: %d of %d (%d of %d patients) ===\n", n_in, nrow(work),
+            if (n_in) length(unique(patient_of(unique(padj_all$sample_id)))) else 0L,
+            length(unique(work$patient_id))))
 if (n_in < nrow(work)) {
   missing <- setdiff(work$sample_id, unique(padj_all$sample_id))
   cat("  excluded: ", paste(missing, collapse = ", "), "\n")
-  cat("  (reason is in the log above, per sample)\n")
+  cat("  (reason is in the log above, per section)\n")
 }
 
 if (nrow(cov_all) > 0) {
-  cat("\n=== Gene coverage per module (across contributing tumours) ===\n")
+  cat("\n=== Gene coverage per module (across contributing sections) ===\n")
   cs <- cov_all %>% group_by(module) %>%
     summarise(median_found = median(n_found), n_total = max(n_total),
               min_found = min(n_found), required = max(n_required), .groups = "drop")
+  ## v5 (C5): median of an even number of sections can be x.5, so %d crashed
   for (i in seq_len(nrow(cs)))
-    cat(sprintf("  %-18s %3d / %3d detected (min %3d, required %3d)\n", cs$module[i],
+    cat(sprintf("  %-18s %5.1f / %3.0f detected (min %3.0f, required %3.0f)\n", cs$module[i],
                 cs$median_found[i], cs$n_total[i], cs$min_found[i], cs$required[i]))
 }
 
 if (nrow(pcol_all) > 0) {
-  cat("\n=== Predictor collinearity (median Spearman) ===\n")
+  cat(sprintf("\n=== Predictor collinearity (median Spearman across %ss) ===\n", UNIT_LABEL))
   for (ES in ERSTRESS_VARIANTS) {
     p <- pcol_all[pcol_all$variant == ES, ]
     if (!nrow(p)) next
     cat(sprintf("  [%s]\n", ES))
-    cat(sprintf("     Hypoxia vs ERstress : %+.2f\n", median(p$Hyp_ERstress, na.rm=TRUE)))
-    cat(sprintf("     Hypoxia vs ERAD     : %+.2f\n", median(p$Hyp_ERAD, na.rm=TRUE)))
-    cat(sprintf("     Collagen vs ERstress: %+.2f\n", median(p$Col_ERstress, na.rm=TRUE)))
-    cat(sprintf("     ERstress vs ERAD    : %+.2f\n", median(p$ERstress_ERAD, na.rm=TRUE)))
+    cat(sprintf("     Hypoxia vs ERstress : %+.2f\n", unit_median(p$Hyp_ERstress,  p$sample_id)))
+    cat(sprintf("     Hypoxia vs ERAD     : %+.2f\n", unit_median(p$Hyp_ERAD,      p$sample_id)))
+    cat(sprintf("     Collagen vs ERstress: %+.2f\n", unit_median(p$Col_ERstress,  p$sample_id)))
+    cat(sprintf("     ERstress vs ERAD    : %+.2f\n", unit_median(p$ERstress_ERAD, p$sample_id)))
   }
+  p1 <- pcol_all[pcol_all$variant == ERSTRESS_VARIANTS[1], ]
   cat(sprintf("  Correlation between the two ERstress variants: %+.3f (median)\n",
-              median(pcol_all$ERstress_variants_cor, na.rm = TRUE)))
+              unit_median(p1$ERstress_variants_cor, p1$sample_id)))
 }
 if (nrow(vif_all) > 0) {
-  cat("\n=== Variance inflation factors (median across tumours) ===\n")
+  cat("\n=== Variance inflation factors (median across sections) ===\n")
   vs <- vif_all %>% group_by(variant, term) %>%
-    summarise(median_VIF = median(VIF, na.rm=TRUE), max_VIF = max(VIF, na.rm=TRUE), .groups="drop") %>%
+    summarise(median_VIF = median(VIF, na.rm=TRUE),
+              max_VIF = suppressWarnings(max(VIF, na.rm=TRUE)), .groups="drop") %>%
     arrange(variant, desc(median_VIF))
   for (i in seq_len(nrow(vs)))
     cat(sprintf("  %-16s %-18s VIF %5.2f (max %6.2f)%s\n", vs$variant[i], vs$term[i],
@@ -1499,22 +1465,22 @@ padj_pooled <- pool_and_write(padj_all, c("variant","term"),           "PROT_adj
 pstr_pooled <- pool_and_write(pstr_all, c("variant","term","hyp_bin"), "PROT_stratified_pooled.csv")
 pint_pooled <- pool_and_write(pint_all, c("variant","term"),           "PROT_interaction_pooled.csv")
 
-excl1 <- function(lo, hi) (lo > 1) | (hi < 1)
+excl1 <- function(lo, hi) isTRUE((lo > 1) | (hi < 1))
 star  <- function(lo, hi) if (excl1(lo, hi)) "  *" else "   "
 
 if (!is.null(marg_pooled)) {
   cat("\n=== MARGINAL (module alone, no adjustment) ===\n")
   for (i in seq_len(nrow(marg_pooled))) with(marg_pooled[i,],
                                              cat(sprintf("  %-16s %-10s OR %6.2f (95%% CI %5.2f-%7.2f) k=%d I2=%2.0f%% tau=%.2f%s\n",
-                                                         variant, term, OR, lower, upper, k, I2, sqrt(tau2), star(lower, upper))))
-  cat("  (ERAD is identical under both variants by construction.)\n")
+                                                         variant, term, OR, lower, upper, as.integer(k), I2, sqrt(tau2), star(lower, upper))))
+  cat(sprintf("  k counts %s. ERAD is identical under both variants by construction.\n", K_UNIT))
 }
 
 if (!is.null(padj_pooled)) {
   cat("\n=== ADJUSTED (all five predictors) ===\n")
   for (i in seq_len(nrow(padj_pooled))) with(padj_pooled[i,],
                                              cat(sprintf("  %-16s %-18s OR %6.2f (95%% CI %5.2f-%7.2f) k=%d I2=%2.0f%% tau=%.2f%s\n",
-                                                         variant, term, OR, lower, upper, k, I2, sqrt(tau2), star(lower, upper))))
+                                                         variant, term, OR, lower, upper, as.integer(k), I2, sqrt(tau2), star(lower, upper))))
   cat("  * = 95% CI excludes 1\n")
   
   a <- padj_pooled[padj_pooled$term == "ERstress" & padj_pooled$variant == "ERstress", ]
@@ -1530,9 +1496,10 @@ if (!is.null(padj_pooled)) {
                   "both variants exclude 1 - not driven by the hypoxia-responsive genes"
                 else if (excl1(a$lower, a$upper) && !excl1(b$lower, b$upper))
                   "*** DOES NOT SURVIVE - significant only with the hypoxia-responsive genes ***"
+                else if (!excl1(a$lower, a$upper) && excl1(b$lower, b$upper))
+                  "significant only in the strict variant"
                 else "neither variant is significant"))
-    cat("     Report the STRICT estimate. 'Survives' is a yes/no test; the size of\n")
-    cat("     the drop matters too, and is printed above.\n")
+    cat("     Report the STRICT estimate, and the size of the drop as well as the verdict.\n")
   }
 }
 
@@ -1542,7 +1509,7 @@ if (!is.null(pstr_pooled)) {
                           match(pstr_pooled$hyp_bin, PROT_BIN_LABELS)), ]
   for (i in seq_len(nrow(ps))) with(ps[i,],
                                     cat(sprintf("  %-16s %-18s %-9s OR %6.2f (95%% CI %5.2f-%7.2f) k=%d%s\n",
-                                                variant, term, hyp_bin, OR, lower, upper, k, star(lower, upper))))
+                                                variant, term, hyp_bin, OR, lower, upper, as.integer(k), star(lower, upper))))
 }
 
 if (!is.null(pint_pooled)) {
@@ -1561,8 +1528,8 @@ if (!is.null(pint_pooled)) {
     } else {
       cat("     CI includes 1 -> no evidence the ER-stress effect changes with hypoxia.\n")
     }
-    cat("     Do NOT quote the raw per-unit interaction OR: it is the product of two\n")
-    cat("     module scores whose observed range is far below 1 unit. Use the slopes.\n")
+    cat("     Do NOT quote the raw per-unit interaction OR: module scores span far\n")
+    cat("     less than 1 unit. Use the slopes below.\n")
     if (length(bE) == 1 && is.finite(bE) && is.finite(it$est) && it$est != 0) {
       cat(sprintf("     ERstress log-odds slope = %+.4f %+.4f * z_Hypoxia\n", bE, it$est))
       cat(sprintf("     crossover at z_Hypoxia = %+.3f (ratio of two pooled estimates; no CI)\n",
@@ -1576,13 +1543,13 @@ if (!is.null(pint_pooled)) {
 
 cat("\n", strrep("=", 72), "\n", sep = "")
 cat("SECTION 11 COMPLETE - READ IN THIS ORDER:\n")
-cat("  1. samples contributing - is anyone excluded, and why?\n")
-cat("  2. gene coverage        - is each score built on enough genes?\n")
-cat("  3. collinearity + VIF   - are the predictors separable?\n")
-cat("  4. marginal             - any signal before conditioning?\n")
+cat("  1. sections contributing - is anyone excluded, and why?\n")
+cat("  2. gene coverage         - is each score built on enough genes?\n")
+cat("  3. collinearity + VIF    - are the predictors separable?\n")
+cat("  4. marginal              - any signal before conditioning?\n")
 cat("  5. adjusted + SENSITIVITY VERDICT\n")
 cat("  6. stratified + interaction\n")
-cat("EXPLORATORY pending Valerio's sign-off on the gene sets.\n")
+cat("EXPLORATORY pending sign-off on the gene sets.\n")
 cat("Associational, mRNA-level. Cannot demonstrate a clamp.\n")
 cat(strrep("=", 72), "\n", sep = "")
 
@@ -1590,48 +1557,48 @@ log_msg("Proteostasis step done.")
 
 ################################################################################
 ## 12. FIGURE EXPORT  --  journal style AND presentation style
-##
-##   BRCA NOTE: the reasoning in this header was written for the PDAC
-##   cohort. Any statement about what the data showed, which module worked,
-##   or how many tumours were usable describes PDAC, not BRCA. The code
-##   below is unchanged except where tagged "BRCA:".
-##
 ##     Reads the pooled CSVs written above, so nothing is re-analysed. Every
 ##     panel is defined once and rendered twice:
-##       journal : 8 pt, 89 / 183 mm columns, vector PDF + 600 dpi PNG,
-##                 panels combined with A/B/C tags, no baked-in titles.
-##       slide   : 16 pt, 13.33 x 7.5 in (16:9), thick lines, large points,
-##                 titles baked in, one panel per slide.
-##     Convention in both: filled point = CI excludes 1, open point = CI includes 1.
+##       journal : 8 pt, 89 / 183 mm columns, vector PDF + 600 dpi PNG
+##       slide   : 16 pt, 13.33 x 7.5 in (16:9), one panel per slide
+##     Filled point = CI excludes 1, open point = CI includes 1.
 ################################################################################
 
 ## ============================================================================
-## 12.0  OBSERVED HYPOXIA SCORE RANGE   (runs once, then cached)
-##       Figure 4 plots the collagen and ER-stress effect as a function of the
-##       hypoxia score. Without the real observed range the x-axis would be
-##       invented and the crossover line could sit at a score that never occurs
-##       in the data. That is how the earlier version of this figure went wrong,
-##       so Figure 4 is hard-blocked on this file existing.
+## 12.0  OBSERVED HYPOXIA SCORE RANGE   (cached; recomputed if stale)
+##       Figure 4 is drawn only over the observed score range. Every section
+##       of the work list gets a row (NA quantiles if it could not be scored),
+##       so the cache can be checked against the work list.
 ## ============================================================================
 HYPRANGE_CSV <- file.path(agg, "HYPOXIA_SCORE_RANGE.csv")
 
-if (!file.exists(HYPRANGE_CSV)) {
-  log_msg("HYPOXIA_SCORE_RANGE.csv missing - computing it (one extra pass over the cohort).")
+hr_fresh <- FALSE
+if (file.exists(HYPRANGE_CSV)) {
+  hr_old <- read.csv(HYPRANGE_CSV, stringsAsFactors = FALSE)
+  ## v5 (C8): a cache built on another set of sections is not reused
+  hr_fresh <- setequal(hr_old$sample_id, work$sample_id)
+  if (!hr_fresh) log_msg("HYPOXIA_SCORE_RANGE.csv was made from other sections - recomputing.")
+}
+
+if (!hr_fresh) {
+  log_msg("Computing HYPOXIA_SCORE_RANGE.csv (one extra pass over the cohort).")
+  na_row <- function(sid, n = NA_integer_)
+    data.frame(sample_id = sid, n_spots = n, q01 = NA_real_, q05 = NA_real_, q25 = NA_real_,
+               q50 = NA_real_, q75 = NA_real_, q95 = NA_real_, q99 = NA_real_, row.names = NULL)
   hr <- do.call(rbind, lapply(seq_len(nrow(work)), function(i) {
     p <- work$path[i]; sid <- work$sample_id[i]
-    if (is.na(p) || !file.exists(p)) return(NULL)
+    if (is.na(p) || !file.exists(p)) return(na_row(sid))
     obj <- readRDS(p)
     obj <- tryCatch(UpdateSeuratObject(obj), error = function(e) obj)
     DefaultAssay(obj) <- if ("SCT" %in% Assays(obj)) "SCT" else Assays(obj)[1]
     g <- intersect(MODULES$Hypoxia, rownames(obj))
-    if (length(g) < 2) return(NULL)
+    if (length(g) < 2) return(na_row(sid, ncol(obj)))
     set.seed(SEED)
-    ## BRCA: one unscorable section must not stop the run; log it and skip it
-    obj <- tryCatch(add_module_score_fallback(obj, features = list(g), name = "H",
-                                              assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
-                    error = function(e) { log_msg("  %s: hypoxia range skipped: %s", sid, conditionMessage(e)); NULL })
-    if (is.null(obj)) return(NULL)
-    v <- obj@meta.data$H1
+    obj2 <- tryCatch(add_module_score_fallback(obj, features = list(g), name = "H",
+                                               assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
+                     error = function(e) { log_msg("  %s: hypoxia range skipped: %s", sid, conditionMessage(e)); NULL })
+    if (is.null(obj2)) return(na_row(sid, ncol(obj)))
+    v <- obj2@meta.data$H1
     qs <- function(q) unname(quantile(v, q, na.rm = TRUE))
     data.frame(sample_id = sid, n_spots = length(v),
                q01 = qs(.01), q05 = qs(.05), q25 = qs(.25), q50 = qs(.50),
@@ -1641,29 +1608,25 @@ if (!file.exists(HYPRANGE_CSV)) {
   log_msg("Hypoxia range written: median 5th pct %.3f, median 95th pct %.3f",
           median(hr$q05, na.rm = TRUE), median(hr$q95, na.rm = TRUE))
 } else {
-  log_msg("Hypoxia score range already cached - skipping recomputation.")
+  log_msg("Hypoxia score range already cached for these sections - skipping recomputation.")
 }
 
 ## ============================================================================
 ## 12.1  STYLE DEFINITIONS
 ## ============================================================================
-PRIMARY_VARIANT <- "ERstressStrict"   # strict 24-gene ER stress module
+PRIMARY_VARIANT <- "ERstressStrict"
 BIN_NICE        <- c("Low", "Mid", "High")
 
 MM <- function(mm) mm / 25.4
 
-CLR <- list(pos  = "#0F4C81",   # CI excludes 1
+CLR <- list(pos  = "#0F4C81",
             neg  = "#B2182B",
             grey = "#8C8C8C",
             full = "#9E9E9E")
 
-## v4 BUG FIX. capabilities("cairo") returns TRUE on this machine but the cairo
-## library fails to load when a device is actually opened, which produced
-## "failed to load cairo DLL" on every PDF and may have left unusable files.
-## Trusting capabilities() is not enough: open a throwaway device once and see
-## whether it really works, then fall back to grDevices::pdf if it does not.
-## The only practical difference is font embedding, which does not matter for
-## these all-ASCII figures.
+## capabilities("cairo") can be TRUE while the cairo library fails to load
+## when a device is opened. Open a throwaway device once and fall back to
+## grDevices::pdf if it does not work.
 PDF_DEV <- local({
   tf <- tempfile(fileext = ".pdf")
   ok <- isTRUE(capabilities("cairo")) &&
@@ -1674,47 +1637,14 @@ PDF_DEV <- local({
 log_msg("PDF device in use: %s", if (identical(PDF_DEV, grDevices::cairo_pdf)) "cairo_pdf" else "pdf (cairo unavailable)")
 
 FIG_STYLES <- list(
-  
   journal = list(
-    dir     = "figures_journal",
-    base    = 8,      # pt
-    pt      = 1.9,    # point size
-    stroke  = 0.45,
-    lwd     = 0.45,
-    lab     = 2.1,    # in-plot numeric label size
-    grid    = 0.25,
-    border  = 0.40,
-    key     = 3,      # mm
-    mar     = 3,
-    tags    = TRUE,
-    titles  = FALSE,
-    split   = FALSE,  # keep multi-panel figures combined
-    devices = c("pdf", "png"),
-    dpi     = 600,
-    w1      = MM(89),   # single column
-    w2      = MM(183)   # double column
-  ),
-  
+    dir = "figures_journal", base = 8, pt = 1.9, stroke = 0.45, lwd = 0.45, lab = 2.1,
+    grid = 0.25, border = 0.40, key = 3, mar = 3, tags = TRUE, titles = FALSE,
+    split = FALSE, devices = c("pdf", "png"), dpi = 600, w1 = MM(89), w2 = MM(183)),
   slide = list(
-    dir     = "figures_slides",
-    base    = 16,
-    pt      = 4.4,
-    stroke  = 0.9,
-    lwd     = 1.0,
-    lab     = 4.8,
-    grid    = 0.5,
-    border  = 0.7,
-    key     = 6,
-    mar     = 10,
-    tags    = FALSE,  # A/B/C tags are meaningless on separate slides
-    titles  = TRUE,   # each slide has to stand on its own
-    split   = TRUE,   # one panel per slide
-    devices = c("png", "pdf"),
-    dpi     = 200,
-    w1      = 13.333, # 16:9
-    w2      = 13.333,
-    h_full  = 7.5
-  )
+    dir = "figures_slides", base = 16, pt = 4.4, stroke = 0.9, lwd = 1.0, lab = 4.8,
+    grid = 0.5, border = 0.7, key = 6, mar = 10, tags = FALSE, titles = TRUE,
+    split = TRUE, devices = c("png", "pdf"), dpi = 200, w1 = 13.333, w2 = 13.333, h_full = 7.5)
 )
 
 theme_fig <- function(S) {
@@ -1744,6 +1674,19 @@ theme_fig <- function(S) {
     )
 }
 
+## one save routine for every figure in sections 12 to 19
+save_fig <- function(p, S, name, w, h) {
+  outdir <- file.path(agg, S$dir); dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
+  for (dv in S$devices) {
+    f <- file.path(outdir, paste0(name, ".", dv))
+    tryCatch({
+      if (dv == "pdf") ggsave(f, p, width = w, height = h, device = PDF_DEV, bg = "white")
+      else             ggsave(f, p, width = w, height = h, dpi = S$dpi, bg = "white")
+    }, error = function(e) log_msg("  fig failed (%s): %s", basename(f), conditionMessage(e)))
+  }
+  cat(sprintf("  %-40s %5.1f x %4.1f in  -> %s\n", name, w, h, S$dir))
+}
+
 ## ============================================================================
 ## 12.2  SHARED HELPERS
 ## ============================================================================
@@ -1753,7 +1696,7 @@ rd <- function(f) {
 }
 
 nice <- c(Hypoxia = "Hypoxia", CollagenSynthesis = "Collagen synthesis",
-          iCAF = "iCAF", myCAF = "myCAF", Epithelial = "Epithelial",
+          iCAF = "iCAF", mCAF = "mCAF", Epithelial = "Epithelial",
           CollagenMaturation = "Collagen maturation", ECMCrosslink = "ECM crosslinking",
           ECMGlycoprotein = "ECM glycoprotein", ECMRemodel = "ECM remodelling",
           ERstress = "ER stress", ERAD = "ERAD")
@@ -1773,8 +1716,10 @@ mk_forest <- function(df, S, xlim, breaks, ycol = "term", colour = CLR$pos,
                    linewidth = S$lwd, colour = "black") +
     geom_point(aes(fill = sig), shape = 21, size = S$pt, stroke = S$stroke, colour = "black") +
     scale_fill_manual(values = c(excl = colour, incl = "white"), guide = "none") +
-    scale_x_log10(limits = xlim, breaks = breaks,
-                  labels = function(x) sub("^0\\.", ".", x)) +
+    ## v5.2: coord_cartesian, not scale limits. Scale limits DELETE any error
+    ## bar that reaches past them (ER stress in Figure 3, ERAD High in Fig 2B).
+    scale_x_log10(breaks = breaks, labels = function(x) sub("^0\\.", ".", x)) +
+    coord_cartesian(xlim = xlim) +
     labs(x = xlab, y = ylab) +
     theme_fig(S)
   if (show_stats) {
@@ -1794,8 +1739,8 @@ mk_strat <- function(df, S, xlim, breaks, colour = CLR$pos, xlab = NULL,
     geom_errorbarh(aes(xmin = lower, xmax = upper), height = 0, linewidth = S$lwd) +
     geom_point(aes(fill = sig), shape = 21, size = S$pt, stroke = S$stroke, colour = "black") +
     scale_fill_manual(values = c(excl = colour, incl = "white"), guide = "none") +
-    scale_x_log10(limits = xlim, breaks = breaks,
-                  labels = function(x) sub("^0\\.", ".", x)) +
+    scale_x_log10(breaks = breaks, labels = function(x) sub("^0\\.", ".", x)) +
+    coord_cartesian(xlim = xlim) +                                   # v5.2, see mk_forest
     facet_wrap(~ term, nrow = nrow_facet) +
     geom_text(aes(label = sprintf("%.2f", OR)), vjust = -1.35,
               size = S$lab, colour = "grey20") +
@@ -1819,27 +1764,13 @@ hrange     <- rd("HYPOXIA_SCORE_RANGE.csv")
 k_of <- function(df) if (!is.null(df) && "k" %in% names(df)) max(df$k, na.rm = TRUE) else NA_integer_
 sub_k <- function(df) {
   k <- k_of(df)
-  if (is.na(k)) NULL else sprintf("Random-effects meta-analysis, k = %d %s", k, K_UNIT)   # BRCA: k unit
+  if (is.na(k)) NULL else sprintf("Random-effects meta-analysis, k = %d %s", as.integer(k), K_UNIT)
 }
 
 ## ============================================================================
 ## 12.4  RENDER EVERY FIGURE IN ONE STYLE
 ## ============================================================================
 render_style <- function(S) {
-  
-  outdir <- file.path(agg, S$dir)
-  dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
-  
-  save_one <- function(p, name, w, h) {
-    for (dv in S$devices) {
-      f <- file.path(outdir, paste0(name, ".", dv))
-      tryCatch({
-        if (dv == "pdf") ggsave(f, p, width = w, height = h, device = PDF_DEV, bg = "white")
-        else             ggsave(f, p, width = w, height = h, dpi = S$dpi, bg = "white")
-      }, error = function(e) log_msg("  fig failed (%s): %s", basename(f), conditionMessage(e)))
-    }
-    cat(sprintf("  %-34s %5.1f x %4.1f in\n", name, w, h))
-  }
   
   ttl <- function(p, t, s = NULL) if (isTRUE(S$titles)) p + labs(title = t, subtitle = s) else p
   tg  <- function(p, t) if (isTRUE(S$tags)) p + labs(tag = t) else p
@@ -1861,16 +1792,16 @@ render_style <- function(S) {
     cdf <- sstr_fig %>% mutate(term = relabel(term),
                                hyp_bin = factor(hyp_bin, BIN_LABELS, BIN_NICE))
     pC <- mk_strat(cdf, S, XL, BR, xlab = XLAB_OR)
-    pC <- tg(ttl(pC, "Within hypoxia tertiles (relative, within tumour)",
+    pC <- tg(ttl(pC, "Within hypoxia tertiles (relative, within section)",
                  "Holding hypoxia level constant"), "C")
     
     if (isTRUE(S$split)) {
-      save_one(pA, "Fig1A_marginal",   S$w2, S$h_full)
-      save_one(pB, "Fig1B_adjusted",   S$w2, S$h_full)
-      save_one(pC, "Fig1C_stratified", S$w2, S$h_full)
+      save_fig(pA, S, "Fig1A_marginal",   S$w2, S$h_full)
+      save_fig(pB, S, "Fig1B_adjusted",   S$w2, S$h_full)
+      save_fig(pC, S, "Fig1C_stratified", S$w2, S$h_full)
     } else {
-      save_one((pA / pB / pC) + plot_layout(heights = c(1.05, 0.85, 1.15)),
-               "Figure1_main", S$w2, MM(135))
+      save_fig((pA / pB / pC) + plot_layout(heights = c(1.05, 0.85, 1.15)),
+               S, "Figure1_main", S$w2, MM(135))
     }
   } else {
     cat("  Figure 1 skipped: a pooled CSV from section 6 or 10 is missing.\n")
@@ -1897,11 +1828,11 @@ render_style <- function(S) {
                  "Strict 24-gene ER stress module. Exploratory."), "B")
     
     if (isTRUE(S$split)) {
-      save_one(pA, "Fig2A_proteostasis_adjusted",   S$w2, S$h_full)
-      save_one(pB, "Fig2B_proteostasis_stratified", S$w2, S$h_full)
+      save_fig(pA, S, "Fig2A_proteostasis_adjusted",   S$w2, S$h_full)
+      save_fig(pB, S, "Fig2B_proteostasis_stratified", S$w2, S$h_full)
     } else {
-      save_one((pA / pB) + plot_layout(heights = c(1, 1.05)),
-               "Figure2_proteostasis", S$w2, MM(100))
+      save_fig((pA / pB) + plot_layout(heights = c(1, 1.05)),
+               S, "Figure2_proteostasis", S$w2, MM(100))
     }
   } else {
     cat("  Figure 2 skipped: a pooled CSV from section 11 is missing.\n")
@@ -1926,26 +1857,26 @@ render_style <- function(S) {
       scale_shape_manual(values = c(excl = 16, incl = 21), guide = "none") +
       scale_colour_manual(values = c("Full (27 genes)"   = CLR$full,
                                      "Strict (24 genes)" = CLR$neg), name = NULL) +
-      scale_x_log10(limits = c(0.35, 5), breaks = c(0.5, 1, 2, 4),
+      scale_x_log10(breaks = c(0.5, 1, 2, 4, 8),
                     labels = function(x) sub("^0\\.", ".", x)) +
-      labs(x = paste("Adjusted", tolower(XLAB_OR)), y = NULL) +
+      coord_cartesian(xlim = c(0.35, 8)) +                           # v5.2: CIs were deleted at 5
+      labs(x = "Adjusted odds ratio for P4HA1 detection (95% CI)", y = NULL) +
       theme_fig(S) + theme(legend.position = "top")
     p3 <- ttl(p3, "ER stress module with and without hypoxia-responsive genes",
               "Removing HYOU1, DDIT4, ERO1A. The strict estimate is the one to report.")
     
-    save_one(p3, "Figure3_sensitivity",
+    save_fig(p3, S, "Figure3_sensitivity",
              if (S$split) S$w2 else S$w1 * 1.6,
              if (S$split) S$h_full else MM(62))
   } else {
     cat("  Figure 3 skipped: PROT_adjusted_pooled.csv does not contain both variants.\n")
   }
   
-  ## -- FIGURE 4: effect modification by hypoxia -----------------------------
-  ##    SUPERSEDED by section 13, which fits both slopes in ONE model and can
-  ##    therefore carry a p value and correct bands. This version is kept only
-  ##    so you can show what changed. Do not present it on its own.
-  if (is.null(hrange)) {
-    cat("  Figure 4 skipped: HYPOXIA_SCORE_RANGE.csv still not available.\n")
+  ## -- FIGURE 4 (old): effect modification by hypoxia -----------------------
+  ##    SUPERSEDED by section 13 (one joint model, correct bands, a p value).
+  ##    Kept only to show what changed. Do not present it on its own.
+  if (is.null(hrange) || !any(is.finite(hrange$q05))) {
+    cat("  Figure 4 (old) skipped: HYPOXIA_SCORE_RANGE.csv not available.\n")
   } else if (!is.null(sint_fig) && !is.null(pint_fig)) {
     lo <- median(hrange$q05, na.rm = TRUE); hi <- median(hrange$q95, na.rm = TRUE)
     zz <- seq(lo, hi, length.out = 200)
@@ -1956,8 +1887,6 @@ render_style <- function(S) {
       im <- grepl(":", d$term)
       b0 <- d$est[d$term == main_term]; bi <- d$est[im]
       if (length(b0) != 1 || length(bi) != 1) return(NULL)
-      ## covariance between the two pooled coefficients is not exported, so it
-      ## is ignored here. State this in the legend. Section 13 fixes it.
       se0 <- (log(d$upper[d$term == main_term]) - log(d$lower[d$term == main_term])) / (2 * 1.96)
       sei <- (log(d$upper[im]) - log(d$lower[im])) / (2 * 1.96)
       est <- b0 + bi * zz
@@ -1973,16 +1902,14 @@ render_style <- function(S) {
     if (!is.null(sl) && nrow(sl)) {
       cr <- sl %>% group_by(panel) %>%
         summarise(cross = dplyr::first(cross), .groups = "drop") %>%
-        filter(cross >= lo, cross <= hi)   # drawn only if inside the observed range
+        filter(cross >= lo, cross <= hi)
       
       p4 <- ggplot(sl, aes(z, OR)) +
         geom_hline(yintercept = 1, linetype = "22", linewidth = S$lwd * 0.7, colour = "grey40") +
         geom_ribbon(aes(ymin = lo, ymax = hi, fill = panel), alpha = .16, colour = NA) +
         geom_line(aes(colour = panel), linewidth = S$lwd * 1.4) +
-        scale_colour_manual(values = c("Collagen synthesis" = CLR$neg,
-                                       "ER stress"          = CLR$pos), name = NULL) +
-        scale_fill_manual(values   = c("Collagen synthesis" = CLR$neg,
-                                       "ER stress"          = CLR$pos), name = NULL) +
+        scale_colour_manual(values = c("Collagen synthesis" = CLR$neg, "ER stress" = CLR$pos), name = NULL) +
+        scale_fill_manual(values   = c("Collagen synthesis" = CLR$neg, "ER stress" = CLR$pos), name = NULL) +
         scale_y_log10() + coord_cartesian(xlim = c(lo, hi)) +
         labs(x = "Hypoxia module score (spot level, 5th to 95th percentile)",
              y = XLAB_OR,
@@ -1991,38 +1918,44 @@ render_style <- function(S) {
       if (nrow(cr))
         p4 <- p4 + geom_vline(data = cr, aes(xintercept = cross),
                               linetype = "dotted", linewidth = S$lwd * 0.7, colour = "grey30")
-      p4 <- ttl(p4, "How the collagen and ER stress effects change with hypoxia",
-                "Slope from the interaction model, over the observed score range only")
+      p4 <- ttl(p4, "How the collagen and ER stress effects change with hypoxia (superseded)",
+                "Slopes from two separate models, over the observed score range only")
       
-      save_one(p4, "Figure4_effect_modification",
+      save_fig(p4, S, "Figure4_effect_modification_OLD",
                if (S$split) S$w2 else S$w1 * 1.5,
                if (S$split) S$h_full else MM(62))
     }
   }
   
-  ## -- FIGURE 5: per-tumour consistency -------------------------------------
-  if (!is.null(permod_fig) && all(c("module", "rho") %in% names(permod_fig))) {
-    pm <- permod_fig[is.finite(permod_fig$rho), , drop = FALSE]
+  ## -- FIGURE 5: per-patient consistency ------------------------------------
+  ##    v5 (C4): one point per patient (mean of its sections).
+  if (!is.null(permod_fig) && all(c("module", "rho", "sample_id") %in% names(permod_fig))) {
+    ## v5.2: CollagenMaturation contains P4HA1 itself (section 1), so its rho
+    ## with P4HA1 is partly P4HA1 against itself. Kept in the CSV, not drawn.
+    pm <- permod_fig[is.finite(permod_fig$rho) & permod_fig$module != "CollagenMaturation", , drop = FALSE] %>%
+      mutate(unit = unit_of(sample_id)) %>%
+      group_by(module, unit) %>% summarise(rho = mean(rho), .groups = "drop")
     pm$module_nice <- relabel(pm$module)
     ordm <- pm %>% group_by(module_nice) %>%
       summarise(med = median(rho, na.rm = TRUE), .groups = "drop") %>%
       arrange(med) %>% pull(module_nice)
     pm$module_nice <- factor(pm$module_nice, levels = ordm)
-    n_tum <- dplyr::n_distinct(pm$sample_id)
+    n_un <- dplyr::n_distinct(pm$unit)
     
     p5 <- ggplot(pm, aes(module_nice, rho)) +
       geom_hline(yintercept = 0, linetype = "22", linewidth = S$lwd * 0.7, colour = "grey40") +
       geom_boxplot(outlier.shape = NA, fill = "grey92", linewidth = S$lwd * 0.8, width = .6) +
       geom_jitter(width = .13, size = S$pt * 0.55, alpha = .5, colour = CLR$pos) +
       coord_flip() +
-      labs(x = NULL, y = "Per-tumour Spearman rho (P4HA1 vs module score)") +
+      labs(x = NULL, y = sprintf("Per-%s Spearman rho (P4HA1 vs module score)", UNIT_LABEL),
+           caption = sprintf("One point per %s (mean of its sections), n = %d.", UNIT_LABEL, n_un)) +
       theme_fig(S) +
       theme(panel.grid.major.x = element_blank(),
             panel.grid.major.y = element_line(linewidth = S$grid, colour = "grey90"))
     p5 <- ttl(p5, "How consistent is each association across tumours?",
-              sprintf("One point per tumour, n = %d", n_tum))
+              sprintf("One point per %s, n = %d", UNIT_LABEL, n_un))
     
-    save_one(p5, "Figure5_consistency",
+    save_fig(p5, S, "Figure5_consistency",
              if (S$split) S$w2 else S$w1 * 1.6,
              if (S$split) S$h_full else MM(70))
   } else {
@@ -2044,47 +1977,19 @@ for (sn in names(FIG_STYLES)) {
 
 cat("\nfigures_journal : PDFs are the versions to submit.\n")
 cat("figures_slides  : 16:9 PNGs, one panel per slide, titles baked in.\n")
-cat("Section 11 output remains EXPLORATORY pending Valerio's sign-off on the gene sets.\n")
+cat("Section 11 output remains EXPLORATORY pending sign-off on the gene sets.\n")
 
 log_msg("SECTIONS 0 TO 12 COMPLETE. Everything under: %s", normalizePath(OUT_ROOT))
 
 ################################################################################
 ## 14. DETECTION AUDIT FOR P4HA1, P4HA2 AND P4HA3
-##
-##   BRCA NOTE: the reasoning in this header was written for the PDAC
-##   cohort. Any statement about what the data showed, which module worked,
-##   or how many tumours were usable describes PDAC, not BRCA. The code
-##   below is unchanged except where tagged "BRCA:".
-##                                             (Valerio, lab meeting 3, Aug 2026)
-##
-## WHY THIS RUNS BEFORE ANY MODEL
-##   Valerio's test is: the pattern should hold for P4HA1 and P4HA2, which
-##   hydroxylate collagen, and FAIL for P4HA3, which does not. That only works
-##   as a falsification test if a null result for P4HA3 means "no effect"
-##   rather than "no power". P4HA3 is the least expressed of the three in most
-##   tissues, so if it is detected in a small fraction of spots the logistic
-##   model either will not converge or will return an estimate so imprecise
-##   that nothing can be concluded. A control with no power proves nothing, and
-##   presenting one as evidence would be worse than not running the test.
-##
-##   So this section counts and does NOTHING else. No module scores, no glm, no
-##   pooling. One pass over the cohort, pure arithmetic, and the answer decides
-##   how the next section is built.
-##
-## PDAC RESULT (unadjusted run, for reference only; NOT the BRCA result,
-## which this section prints when it runs)
-##   All three genes present in all 23 PDAC tumours under their current symbols.
-##   Detection: A1 median 27.9%, A2 30.1%, A3 9.0%.
-##   Usable: A1 23/23, A2 23/23, A3 20/23.
-##   Depth correlation: 0.14 / 0.17 / 0.10, all modest.
-##   P4HA1 vs P4HA2 spot overlap: median Jaccard 0.24.
-##   ERO1A present in all 23, ERO1L in none, so the strict module really does
-##   drop three genes as described.
-##
-## NOTE ON THE DEPTH SWITCH
-##   This section is unaffected by ADJUST_DEPTH: it fits nothing, so there is
-##   nothing to adjust. It writes unsuffixed filenames deliberately, because the
-##   counts are the same whichever way the models are later fitted.
+##     P4HA1, P4HA2 and P4HA3 all encode collagen P4H alpha subunits; P4HA3
+##     also forms an active enzyme that hydroxylates collagen (Kukkola et al.,
+##     J Biol Chem 2003, doi:10.1074/jbc.M306806200). A null result for
+##     P4HA3 only means "no effect" if P4HA3 is detected often enough to be
+##     modelled. This section counts and does nothing else: no module scores,
+##     no glm, no pooling. It writes unsuffixed files deliberately (it fits
+##     nothing, so ADJUST_DEPTH does not apply).
 ################################################################################
 
 stopifnot(exists("work"), exists("agg"), exists("log_msg"), exists("bind"))
@@ -2094,53 +1999,42 @@ stopifnot(exists("work"), exists("agg"), exists("log_msg"), exists("bind"))
 ## ============================================================================
 P4HA_GENES <- c("P4HA1", "P4HA2", "P4HA3")
 
-## Legacy symbol aliases to look for if the primary symbol is absent. An object
-## built on an older reference will carry the left hand name.
+## legacy symbol aliases to look for if the primary symbol is absent
 ALIASES <- list(
   P4HA1  = character(0),
   P4HA2  = character(0),
   P4HA3  = character(0),
-  ERO1A  = "ERO1L"       # settled: these objects carry ERO1A
-)
+  ERO1A  = "ERO1L")
 
-## Rule of thumb only, not a law: about 10 events per predictor. The joint model
-## in section 13 has 6 predictors plus an intercept, so roughly 70 events, and
-## the same again for non-events. Tumours below this are flagged, not deleted.
+## ~10 events per predictor; the joint model has 6 predictors + intercept.
+## Sections below this are flagged, not deleted.
 MIN_EVENTS_PER_TUMOUR <- 70
 
-JOINT_CACHE_DETECTION <- TRUE   # cache cohort-wide per-gene detection rates
-DETECT_CACHE_MIN_RATE <- 0.005  # do not cache genes under this rate, keeps file small
+JOINT_CACHE_DETECTION <- TRUE   # cache per-gene detection rates (sections 16, 19, 25)
+DETECT_CACHE_MIN_RATE <- 0.005  # do not cache genes under this rate
 
 ## ============================================================================
 ## 14.1  CIRCULARITY RE-AUDIT FOR THE NEW OUTCOMES
-##       The rule that caught CollagenMaturation applies again the moment the
-##       outcome gene changes. A module containing P4HA2 is fine as a predictor
-##       of P4HA1 but circular as a predictor of P4HA2.
 ## ============================================================================
 cat("\n", strrep("=", 74), "\n", sep = "")
 cat("SECTION 14.1  CIRCULARITY RE-AUDIT FOR THE NEW OUTCOMES\n")
 cat(strrep("=", 74), "\n", sep = "")
 
-if (exists("MODULES")) {
-  PREDICTOR_MODULES <- c("Hypoxia", "CollagenSynthesis", "iCAF",
-                         intersect(c("ERstressStrict", "ERstress", "ERAD"), names(MODULES)))
-  for (g in P4HA_GENES) {
-    hits <- names(MODULES)[vapply(MODULES, function(m) g %in% m, logical(1))]
-    used <- intersect(hits, PREDICTOR_MODULES)
-    cat(sprintf("\n  %s appears in modules: %s\n", g,
-                if (length(hits)) paste(hits, collapse = ", ") else "none"))
-    cat(sprintf("     of which used as PREDICTORS: %s\n",
-                if (length(used)) paste0("*** CIRCULAR: ", paste(used, collapse = ", "), " ***")
-                else "none, safe"))
-  }
-  cat("\n  Reminder: CollagenMaturation contains P4HA1 and P4HA2 and is already\n")
-  cat("  excluded from every model. Confirm again before swapping the outcome.\n")
-} else {
-  cat("  MODULES not defined, skipping. Run section 1 first.\n")
+PREDICTOR_MODULES <- c("Hypoxia", "CollagenSynthesis", "iCAF",
+                       intersect(c("ERstressStrict", "ERstress", "ERAD"), names(MODULES)))
+for (g in P4HA_GENES) {
+  hits <- names(MODULES)[vapply(MODULES, function(m) g %in% m, logical(1))]
+  used <- intersect(hits, PREDICTOR_MODULES)
+  cat(sprintf("\n  %s appears in modules: %s\n", g,
+              if (length(hits)) paste(hits, collapse = ", ") else "none"))
+  cat(sprintf("     of which used as PREDICTORS: %s\n",
+              if (length(used)) paste0("*** CIRCULAR: ", paste(used, collapse = ", "), " ***")
+              else "none, safe"))
 }
+cat("\n  CollagenMaturation contains P4HA1 and P4HA2 and is excluded from every model.\n")
 
 ## ============================================================================
-## 14.2  COUNT, ONE TUMOUR AT A TIME
+## 14.2  COUNT, ONE SECTION AT A TIME
 ## ============================================================================
 detect_one <- function(rds_path, sid) {
   obj <- readRDS(rds_path)
@@ -2149,7 +2043,6 @@ detect_one <- function(rds_path, sid) {
   rn <- rownames(obj)
   n  <- ncol(obj)
   
-  ## resolve each gene to whatever symbol is actually present
   resolve <- function(g) {
     if (g %in% rn) return(g)
     alt <- intersect(ALIASES[[g]], rn)
@@ -2157,7 +2050,6 @@ detect_one <- function(rds_path, sid) {
     NA_character_
   }
   
-  ## sequencing depth per spot
   cnt_col <- grep("^nCount_", colnames(obj@meta.data), value = TRUE)
   depth   <- if (length(cnt_col)) obj@meta.data[[cnt_col[1]]] else rep(NA_real_, n)
   feat_col <- grep("^nFeature_", colnames(obj@meta.data), value = TRUE)
@@ -2170,7 +2062,6 @@ detect_one <- function(rds_path, sid) {
     depth_q25 = qs(depth, .25), depth_median = qs(depth, .50), depth_q75 = qs(depth, .75),
     nFeature_median = qs(nfeat, .50), row.names = NULL)
   
-  ## per gene counts
   pos_list <- list()
   rows <- do.call(rbind, lapply(P4HA_GENES, function(g) {
     sym <- resolve(g)
@@ -2191,7 +2082,6 @@ detect_one <- function(rds_path, sid) {
                depth_rho = rho, row.names = NULL)
   }))
   
-  ## do P4HA1 and P4HA2 mark the same spots?
   co <- data.frame(sample_id = sid, jaccard_A1_A2 = NA_real_, both = NA_integer_)
   if (!is.null(pos_list$P4HA1) && !is.null(pos_list$P4HA2)) {
     a <- pos_list$P4HA1; b <- pos_list$P4HA2
@@ -2200,12 +2090,10 @@ detect_one <- function(rds_path, sid) {
     co$jaccard_A1_A2 <- if (u > 0) sum(a & b) / u else NA_real_
   }
   
-  ## side errand: ERO1A vs ERO1L
   ero <- data.frame(sample_id = sid,
                     ERO1A_present = "ERO1A" %in% rn,
                     ERO1L_present = "ERO1L" %in% rn)
   
-  ## optional cache of cohort-wide detection rates for the random-gene control
   rates <- NULL
   if (JOINT_CACHE_DETECTION) {
     m <- tryCatch(GetAssayData(obj, assay = DefaultAssay(obj), layer = "counts"),
@@ -2242,7 +2130,7 @@ depth_all <- bind(acc14$depth)
 co_all    <- bind(acc14$codetect)
 ero_all   <- bind(acc14$ero)
 
-if (nrow(det_all) == 0) stop("Section 14: no tumour could be read.")
+if (nrow(det_all) == 0) stop("Section 14: no section could be read.")
 
 write.csv(det_all,   file.path(agg, "DETECT_p4ha_per_sample.csv"), row.names = FALSE)
 write.csv(depth_all, file.path(agg, "DETECT_depth_per_sample.csv"), row.names = FALSE)
@@ -2250,7 +2138,7 @@ write.csv(depth_all, file.path(agg, "DETECT_depth_per_sample.csv"), row.names = 
 if (JOINT_CACHE_DETECTION && length(acc14$rates)) {
   rates_all <- bind(acc14$rates)
   write.csv(rates_all, file.path(agg, "DETECT_cohort_gene_rates.csv"), row.names = FALSE)
-  log_msg("Cached detection rates for %d gene-by-tumour combinations.", nrow(rates_all))
+  log_msg("Cached detection rates for %d gene-by-section combinations.", nrow(rates_all))
 }
 
 ## ============================================================================
@@ -2259,94 +2147,95 @@ if (JOINT_CACHE_DETECTION && length(acc14$rates)) {
 cat("\n", strrep("=", 74), "\n", sep = "")
 cat("SECTION 14  DETECTION AUDIT\n")
 cat(strrep("=", 74), "\n", sep = "")
-cat(sprintf("Tumours read: %d\n", dplyr::n_distinct(det_all$sample_id)))
+cat(sprintf("Sections read: %d (%d patients)\n", dplyr::n_distinct(det_all$sample_id),
+            length(unique(patient_of(unique(det_all$sample_id))))))
 
 cat("\n--- is each gene in the object at all? ---\n")
 for (g in P4HA_GENES) {
   s <- det_all[det_all$gene == g, ]
-  cat(sprintf("  %-6s present in %2d / %2d tumours", g, sum(s$present), nrow(s)))
+  cat(sprintf("  %-6s present in %2d / %2d sections", g, sum(s$present), nrow(s)))
   syms <- unique(na.omit(s$symbol_found))
   cat(sprintf("   symbol(s): %s\n", if (length(syms)) paste(syms, collapse = ", ") else "NOT FOUND"))
 }
 
 cat("\n--- detection rate per gene (fraction of spots with count > 0) ---\n")
-det_summary <- det_all %>%
-  dplyr::filter(present) %>%
+det_ok <- det_all[det_all$present, , drop = FALSE]
+det_ok$usable <- det_ok$n_detected >= MIN_EVENTS_PER_TUMOUR &
+  (det_ok$n_spots - det_ok$n_detected) >= MIN_EVENTS_PER_TUMOUR
+det_summary <- det_ok %>%
   dplyr::group_by(gene) %>%
   dplyr::summarise(
-    k_tumours       = dplyr::n(),
-    median_rate     = median(detect_rate, na.rm = TRUE),
-    min_rate        = min(detect_rate, na.rm = TRUE),
-    max_rate        = max(detect_rate, na.rm = TRUE),
-    median_events   = median(n_detected, na.rm = TRUE),
-    min_events      = min(n_detected, na.rm = TRUE),
-    n_tumours_ok    = sum(n_detected >= MIN_EVENTS_PER_TUMOUR &
-                            (n_spots - n_detected) >= MIN_EVENTS_PER_TUMOUR, na.rm = TRUE),
+    k_sections       = dplyr::n(),
+    k_patients       = length(unique(patient_of(sample_id))),
+    median_rate      = median(detect_rate, na.rm = TRUE),
+    min_rate         = min(detect_rate, na.rm = TRUE),
+    max_rate         = max(detect_rate, na.rm = TRUE),
+    median_events    = median(n_detected, na.rm = TRUE),
+    min_events       = min(n_detected, na.rm = TRUE),
+    n_sections_ok    = sum(usable, na.rm = TRUE),
+    n_patients_ok    = length(unique(patient_of(sample_id[usable %in% TRUE]))),
     median_depth_rho = median(depth_rho, na.rm = TRUE),
     .groups = "drop")
 write.csv(det_summary, file.path(agg, "DETECT_p4ha_summary.csv"), row.names = FALSE)
 
 for (i in seq_len(nrow(det_summary))) with(det_summary[i, ],
-                                           cat(sprintf("  %-6s median %5.1f%% (range %4.1f%% to %5.1f%%)  median %5.0f events (min %4.0f)  usable in %2d/%2d tumours\n",
+                                           cat(sprintf("  %-6s median %5.1f%% (range %4.1f%% to %5.1f%%)  median %5.0f events (min %4.0f)  usable in %2d/%2d sections, %2d/%2d patients\n",
                                                        gene, 100*median_rate, 100*min_rate, 100*max_rate,
-                                                       median_events, min_events, n_tumours_ok, k_tumours)))
-cat(sprintf("  \"usable\" = at least %d detected AND %d undetected spots. Rule of thumb\n",
+                                                       median_events, min_events, n_sections_ok, k_sections, n_patients_ok, k_patients)))
+cat(sprintf("  \"usable\" = at least %d detected AND %d undetected spots (rule of thumb).\n",
             MIN_EVENTS_PER_TUMOUR, MIN_EVENTS_PER_TUMOUR))
-cat("  (~10 events per predictor, 6 predictors), not a hard statistical law.\n")
 
-cat("\n--- per tumour, side by side ---\n")
+cat("\n--- per section, side by side ---\n")
 wide <- det_all %>%
   dplyr::select(sample_id, gene, detect_rate, n_detected) %>%
-  tidyr::pivot_wider(names_from = gene, values_from = c(detect_rate, n_detected)) %>%
-  dplyr::arrange(dplyr::desc(detect_rate_P4HA1))
-cat(sprintf("  %-26s %8s %8s %8s %10s\n", "tumour", "A1 %", "A2 %", "A3 %", "A3 events"))
+  tidyr::pivot_wider(names_from = gene, values_from = c(detect_rate, n_detected))
+if ("detect_rate_P4HA1" %in% names(wide)) wide <- dplyr::arrange(wide, dplyr::desc(detect_rate_P4HA1))
+gcol <- function(r, nm) if (nm %in% names(r)) r[[nm]] else NA_real_
+cat(sprintf("  %-30s %-10s %8s %8s %8s %10s\n", "section", "patient", "A1 %", "A2 %", "A3 %", "A3 events"))
 for (i in seq_len(nrow(wide))) {
   r <- wide[i, ]
   f  <- function(x) if (is.null(x) || length(x) == 0 || is.na(x)) "       ." else sprintf("%8.1f", 100*x)
   fe <- function(x) if (is.null(x) || length(x) == 0 || is.na(x)) "         ." else sprintf("%10.0f", x)
-  ## flag the tumours that will drop out of the P4HA3 model, so the change in k
-  ## is visible here rather than discovered later
-  low3 <- !is.na(r$n_detected_P4HA3) && r$n_detected_P4HA3 < MIN_EVENTS_PER_TUMOUR
-  cat(sprintf("  %-26s %s %s %s %s%s\n", r$sample_id,
-              f(r$detect_rate_P4HA1), f(r$detect_rate_P4HA2), f(r$detect_rate_P4HA3),
-              fe(r$n_detected_P4HA3), if (low3) "   <-- too few for P4HA3" else ""))
+  a3 <- gcol(r, "n_detected_P4HA3")
+  low3 <- !is.na(a3) && a3 < MIN_EVENTS_PER_TUMOUR
+  cat(sprintf("  %-30s %-10s %s %s %s %s%s\n", r$sample_id, patient_of(r$sample_id),
+              f(gcol(r, "detect_rate_P4HA1")), f(gcol(r, "detect_rate_P4HA2")),
+              f(gcol(r, "detect_rate_P4HA3")), fe(a3),
+              if (low3) "   <-- too few for P4HA3" else ""))
 }
 
 cat("\n--- does detection just follow sequencing depth? ---\n")
 for (g in P4HA_GENES) {
-  s <- det_all[det_all$gene == g & det_all$present, ]
+  s <- det_all[det_all$gene == g & det_all$present & is.finite(det_all$depth_rho), ]
   if (!nrow(s)) next
   cat(sprintf("  %-6s median Spearman rho(detected, nCount) = %+.2f  (range %+.2f to %+.2f)\n",
-              g, median(s$depth_rho, na.rm = TRUE),
-              min(s$depth_rho, na.rm = TRUE), max(s$depth_rho, na.rm = TRUE)))
+              g, median(s$depth_rho), min(s$depth_rho), max(s$depth_rho)))
 }
-cat("  The higher this is, the more depth adjustment matters. It never proves\n")
-cat("  the signal is artefactual, but it sizes the objection. Set ADJUST_DEPTH\n")
-cat("  <- TRUE in section 0 to answer it directly.\n")
+cat("  The higher this is, the more depth adjustment matters. Set ADJUST_DEPTH\n")
+cat("  <- TRUE in block 12b to answer it directly.\n")
 
-if (nrow(co_all)) {
+if (nrow(co_all) && any(is.finite(co_all$jaccard_A1_A2))) {
   cat("\n--- do P4HA1 and P4HA2 mark the same spots? ---\n")
   cat(sprintf("  median Jaccard overlap = %.2f  (range %.2f to %.2f)\n",
               median(co_all$jaccard_A1_A2, na.rm = TRUE),
               min(co_all$jaccard_A1_A2, na.rm = TRUE),
               max(co_all$jaccard_A1_A2, na.rm = TRUE)))
-  cat("  High overlap means P4HA2 is close to a repeat of P4HA1, so agreement\n")
-  cat("  between them is weaker evidence than it looks. Low overlap means they\n")
-  cat("  are closer to independent tests. Report this number either way.\n")
+  cat("  High overlap: P4HA2 is close to a repeat of P4HA1, so agreement between\n")
+  cat("  them is weak evidence. Low overlap: closer to independent tests.\n")
 }
 
-cat("\n--- side errand: ERO1A vs ERO1L ---\n")
+cat("\n--- ERO1A vs ERO1L ---\n")
 if (nrow(ero_all)) {
-  cat(sprintf("  ERO1A present in %d / %d tumours\n", sum(ero_all$ERO1A_present), nrow(ero_all)))
-  cat(sprintf("  ERO1L present in %d / %d tumours\n", sum(ero_all$ERO1L_present), nrow(ero_all)))
+  cat(sprintf("  ERO1A present in %d / %d sections\n", sum(ero_all$ERO1A_present), nrow(ero_all)))
+  cat(sprintf("  ERO1L present in %d / %d sections\n", sum(ero_all$ERO1L_present), nrow(ero_all)))
   if (all(!ero_all$ERO1A_present) && any(ero_all$ERO1L_present)) {
-    cat("  *** The pipeline asks for ERO1A and the objects carry ERO1L. The gene\n")
-    cat("      is being dropped silently, so the strict ER stress module removes\n")
-    cat("      TWO hypoxia-responsive genes, not three. Fix the gene list and say\n")
-    cat("      so before quoting the sensitivity analysis. ***\n")
+    cat("  *** The pipeline asks for ERO1A and the objects carry ERO1L. The strict\n")
+    cat("      ER stress module then removes TWO hypoxia-responsive genes, not three.\n")
+    cat("      Fix the gene list before quoting the sensitivity analysis. ***\n")
   } else if (all(ero_all$ERO1A_present)) {
-    cat("  Fine. ERO1A is the symbol in use, the strict module really does drop\n")
-    cat("  three genes as described.\n")
+    cat("  ERO1A is the symbol in use; the strict module drops three genes as described.\n")
+  } else {
+    cat("  ERO1A is missing from some sections; the strict module differs between them.\n")
   }
 }
 
@@ -2358,64 +2247,41 @@ cat("VERDICT: CAN THE P4HA2 / P4HA3 TEST BE RUN?\n")
 cat(strrep("=", 74), "\n", sep = "")
 for (g in P4HA_GENES) {
   s <- det_summary[det_summary$gene == g, ]
-  if (!nrow(s)) { cat(sprintf("  %-6s NOT PRESENT in any tumour. Test impossible.\n", g)); next }
-  frac <- s$n_tumours_ok / s$k_tumours
+  if (!nrow(s)) { cat(sprintf("  %-6s NOT PRESENT in any section. Test impossible.\n", g)); next }
+  frac <- s$n_patients_ok / s$k_patients
   verdict <- if (frac >= 0.8) "fine, model as usual" else
-    if (frac >= 0.5) "marginal, report k and per-tumour events alongside every estimate" else
+    if (frac >= 0.5) "marginal, report k and per-section events alongside every estimate" else
       "UNDERPOWERED, a null result here would mean nothing"
-  cat(sprintf("  %-6s usable in %2d/%2d tumours (%.0f%%)  ->  %s\n",
-              g, s$n_tumours_ok, s$k_tumours, 100*frac, verdict))
+  cat(sprintf("  %-6s usable in %2d/%2d patients (%.0f%%)  ->  %s\n",
+              g, s$n_patients_ok, s$k_patients, 100*frac, verdict))
 }
-cat("\n  If P4HA3 lands in the underpowered row, the falsification test cannot be\n")
-cat("  run as a simple null result. The honest options then are:\n")
-cat("    (a) report its CI and show it excludes the P4HA1 effect size, which is\n")
-cat("        an equivalence argument rather than a significance one; or\n")
-cat("    (b) state plainly that P4HA3 is too sparsely detected in Visium to\n")
-cat("        serve as a control, and propose a different specificity test.\n")
-cat("  What is NOT acceptable is reporting \"no effect in P4HA3\" without the\n")
-cat("  power statement attached.\n")
+cat("\n  If P4HA3 is underpowered, report its CI and whether it excludes the P4HA1\n")
+cat("  effect size (an equivalence argument), or state plainly that P4HA3 is too\n")
+cat("  sparse in Visium to serve as a control. Never report \"no effect in P4HA3\"\n")
+cat("  without the power statement.\n")
 cat(strrep("=", 74), "\n", sep = "")
 
 log_msg("Section 14 complete.")
 
 ################################################################################
-## 12b. RUN STATE, PROVENANCE AND SHARED HELPERS FOR SECTIONS 13 TO 17
+## 12b. RUN STATE, PROVENANCE AND SHARED HELPERS FOR SECTIONS 13 TO 26
 ##
-## This block used to live in section 0 and inside section 13. It sits here in
-## the merged file because of the bug it exists to prevent:
-##
-##   The filename suffix and the model formula were both derived from
-##   ADJUST_DEPTH, but at DIFFERENT MOMENTS. Re-entering section 13 below its
-##   settings line updated the suffix and not the model, so an unadjusted
-##   analysis was written under a "_depthadj" name. Two filenames, one analysis,
-##   and nothing said so.
-##
-## Everything that guards against that is here, in one place, ahead of every
-## section that could be affected:
-##   ADJUST_DEPTH, OUT_SUFFIX, outf(), RUN_ID, stamp(), write_out(),
-##   assert_run_state(), write_run_manifest(), pool_with_p(), fmt_p()
-##
-## DO NOT redefine any of these by hand in the console. That is exactly how the
-## identical files were produced. Change ADJUST_DEPTH here and re-run from the
-## top of the file.
+##   The filename suffix and the model formula must both come from
+##   ADJUST_DEPTH at the same moment. Everything that guards against them
+##   disagreeing is here, ahead of every section that could be affected.
+##   DO NOT redefine any of these by hand in the console. Change ADJUST_DEPTH
+##   here and re-run from the top of the file in a fresh session.
 ################################################################################
 
-## ADJUST_DEPTH is the ONLY place this is set. Sections 13, 15 and 16 read it
-## and are forbidden from overriding it. See 13.0a for the enforcement.
+## ADJUST_DEPTH is the ONLY place this is set.
 ADJUST_DEPTH <- FALSE
 
 OUT_SUFFIX <- if (isTRUE(ADJUST_DEPTH)) "_depthadj" else ""
 outf <- function(base, ext = "csv") sprintf("%s%s.%s", base, OUT_SUFFIX, ext)
 
-## A run identity, so a file can always be traced back to the run that made it.
-## Recomputed every time section 0 executes, which is what makes it useful: if
-## two files carry the same RUN_ID they came from one execution.
 RUN_ID <- paste0(format(Sys.time(), "%Y%m%d-%H%M%S"), "-",
                  if (isTRUE(ADJUST_DEPTH)) "depthadj" else "plain")
 
-## Stamp provenance onto every data frame before it is written. Two extra
-## columns is a small price for never again having to guess which run a CSV
-## came from.
 stamp <- function(df) {
   if (is.null(df) || !nrow(df)) return(df)
   df$adjust_depth <- isTRUE(ADJUST_DEPTH)
@@ -2423,21 +2289,10 @@ stamp <- function(df) {
   df
 }
 
-## write.csv with the stamp applied, so it cannot be forgotten on one file
 write_out <- function(df, base) {
   write.csv(stamp(df), file.path(agg, outf(base)), row.names = FALSE)
   invisible(NULL)
 }
-
-
-## ---------------------------------------------------------------------------
-## SHARED HELPERS FOR SECTIONS 13, 15, 16 AND 17
-##
-## v5.1: these were originally defined inside section 13, which meant sections
-## 15 and 16 could not run unless section 13 had run first in the same session.
-## That is the wrong shape for a guard: the thing that checks the run state must
-## not depend on one of the sections it is guarding. They live here now.
-## ---------------------------------------------------------------------------
 
 assert_run_state <- function(where) {
   problems <- character(0)
@@ -2445,8 +2300,8 @@ assert_run_state <- function(where) {
   if (!exists("ADJUST_DEPTH")) problems <- c(problems, "ADJUST_DEPTH is not defined")
   if (!exists("OUT_SUFFIX"))   problems <- c(problems, "OUT_SUFFIX is not defined")
   if (!exists("outf"))         problems <- c(problems, "outf() is not defined")
-  if (!exists("RUN_ID"))       problems <- c(problems, "RUN_ID is not defined; apply the section 0 patch")
-  if (length(problems)) stop(sprintf("%s: %s. Re-run the section 0 patch.",
+  if (!exists("RUN_ID"))       problems <- c(problems, "RUN_ID is not defined")
+  if (length(problems)) stop(sprintf("%s: %s. Re-run block 12b.",
                                      where, paste(problems, collapse = "; ")))
   
   expect_suffix <- if (isTRUE(ADJUST_DEPTH)) "_depthadj" else ""
@@ -2461,23 +2316,20 @@ assert_run_state <- function(where) {
       "outf() returns '%s', which does not match ADJUST_DEPTH = %s. It was probably redefined by hand.",
       test_name, ADJUST_DEPTH))
   
-  local_flags <- c(JOINT_ADJUST_DEPTH = if (exists("JOINT_ADJUST_DEPTH")) JOINT_ADJUST_DEPTH else NA,
-                   ISO_ADJUST_DEPTH   = if (exists("ISO_ADJUST_DEPTH"))   ISO_ADJUST_DEPTH   else NA,
-                   RND_ADJUST_DEPTH   = if (exists("RND_ADJUST_DEPTH"))   RND_ADJUST_DEPTH   else NA)
-  local_flags <- local_flags[!is.na(local_flags)]
+  flag_names <- c("JOINT_ADJUST_DEPTH", "ISO_ADJUST_DEPTH", "RND_ADJUST_DEPTH", "METAB_ADJUST_DEPTH",
+                  "SC_ADJUST_DEPTH", "EL_ADJUST_DEPTH", "UPR_ADJUST_DEPTH", "SP_ADJUST_DEPTH")
+  local_flags <- unlist(lapply(flag_names, function(f) if (exists(f)) setNames(get(f), f) else NULL))
   bad <- names(local_flags)[local_flags != ADJUST_DEPTH]
   if (length(bad))
     problems <- c(problems, sprintf(
-      "%s disagree(s) with ADJUST_DEPTH = %s. You re-entered a section below its settings block.",
+      "%s disagree(s) with ADJUST_DEPTH = %s. A section was re-entered below its settings block.",
       paste(bad, collapse = ", "), ADJUST_DEPTH))
   
   if (length(problems)) {
     cat("\n", strrep("!", 74), "\n", sep = "")
     cat(sprintf("%s: RUN STATE IS INCONSISTENT. NOTHING WAS FITTED.\n", where))
     for (p in problems) cat("  - ", p, "\n", sep = "")
-    cat("\n  Fix: start a fresh R session and run from section 0. Do not redefine\n")
-    cat("  outf() or the flags by hand: that is exactly how the adjusted and\n")
-    cat("  unadjusted files came out identical last time.\n")
+    cat("\n  Fix: start a fresh R session and run from section 0.\n")
     cat(strrep("!", 74), "\n", sep = "")
     stop("Run state inconsistent; see the message above.")
   }
@@ -2487,22 +2339,19 @@ assert_run_state <- function(where) {
   invisible(TRUE)
 }
 
-
 write_run_manifest <- function() {
-  gene_hash <- function(g) paste0(length(g), ":", substr(
-    paste(sort(g), collapse = ","), 1, 60))
+  gene_hash <- function(g) paste0(length(g), ":", substr(paste(sort(g), collapse = ","), 1, 60))
   mf <- data.frame(
-    key = c("run_id", "timestamp", "adjust_depth", "seed", "out_suffix",
-            "R_version", "Seurat_version",
-            "n_tumours_in_worklist",
+    key = c("run_id", "timestamp", "adjust_depth", "seed", "out_suffix", "pool_level",
+            "include_metastasis", "R_version", "Seurat_version",
+            "n_sections_in_worklist", "n_patients_in_worklist",
             "module_Hypoxia", "module_CollagenSynthesis", "module_iCAF",
-            "module_ERstressStrict", "module_ERAD",
-            "joint_formula"),
+            "module_ERstressStrict", "module_ERAD", "joint_formula"),
     value = c(RUN_ID, format(Sys.time()), as.character(ADJUST_DEPTH),
-              as.character(SEED), OUT_SUFFIX,
+              as.character(SEED), OUT_SUFFIX, POOL_LEVEL, as.character(INCLUDE_METASTASIS),
               paste(R.version$major, R.version$minor, sep = "."),
               as.character(utils::packageVersion("Seurat")),
-              as.character(nrow(work)),
+              as.character(nrow(work)), as.character(length(unique(work$patient_id))),
               gene_hash(MODULES$Hypoxia), gene_hash(MODULES$CollagenSynthesis),
               gene_hash(MODULES$iCAF), gene_hash(MODULES$ERstressStrict),
               gene_hash(MODULES$ERAD),
@@ -2512,10 +2361,12 @@ write_run_manifest <- function() {
   write.csv(mf, file.path(agg, outf("RUN_manifest")), row.names = FALSE)
   cat("\n--- run manifest ---\n")
   for (i in seq_len(nrow(mf))) cat(sprintf("  %-26s %s\n", mf$key[i], mf$value[i]))
-  cat("  Diff this against the previous run's manifest whenever numbers move.\n")
   invisible(mf)
 }
 
+## meta_pool returns est / lower / upper; recover SE and a Wald p from the
+## interval. The statistic is called zstat because in 13.5 a grouping
+## variable is called z.
 pool_with_p <- function(yi, vi, sid = NULL) {
   m <- meta_pool(yi, vi, sid)
   if (!is.finite(m$est) || !is.finite(m$lower)) {
@@ -2529,46 +2380,77 @@ pool_with_p <- function(yi, vi, sid = NULL) {
 }
 
 fmt_p <- function(p) {
-  if (!is.finite(p)) return("NA")
+  if (length(p) != 1 || !is.finite(p)) return("NA")
   if (p < 2e-16) return("< 2e-16")
   if (p < 0.001)  return(sprintf("%.1e", p))
   sprintf("%.3f", p)
 }
 
+## k label used on every figure and report from here on
+k_lab <- function(r) sprintf("k = %d %s (%d sections)", as.integer(r$k), K_UNIT, as.integer(r$k_sections))
+
+## ---------------------------------------------------------------------------
+## v5 (C3): SAFETY CHECK AGAINST SECTION 15, SECTION BY SECTION
+##   Sections 20, 23, 24 and 26 refit the section 15 model (or a part of it)
+##   and must reproduce it. They are compared per section on the sections
+##   both fitted, and the pooled reference is recomputed on those sections.
+##   A section fitted here but NOT in section 15 halts: the inclusion rules
+##   then differ. A section fitted in 15 but not here (no ESTIMATE table, for
+##   example) is listed and the comparison continues without it.
+## ---------------------------------------------------------------------------
+s15_fitted <- function(outcome) {
+  if (!exists("iso_stat")) stop("Section 15 has not run in this session (iso_stat missing).")
+  unique(iso_stat$sample_id[iso_stat$outcome == outcome & iso_stat$fitted])
+}
+
+check_against_s15 <- function(per_section, outcome, where, tol = 1e-6) {
+  if (!exists("iso_con") || !exists("iso_con_pooled"))
+    stop(where, " needs section 15 (iso_con, iso_con_pooled) in the same session for its safety check.")
+  ref  <- iso_con[iso_con$outcome == outcome & iso_con$contrast == "interaction_diff",
+                  c("sample_id", "est", "var")]
+  here <- per_section[, c("sample_id", "est", "var")]
+  extra <- setdiff(here$sample_id, ref$sample_id)
+  lost  <- setdiff(ref$sample_id, here$sample_id)
+  m <- merge(here, ref, by = "sample_id", suffixes = c("", "_s15"))
+  dmax <- if (nrow(m)) max(abs(m$est - m$est_s15)) else NA_real_
+  
+  cat("\n", strrep("=", 74), "\n", sep = "")
+  cat(sprintf("%s  SAFETY CHECK against section 15 (%s)\n", where, outcome))
+  cat(strrep("=", 74), "\n", sep = "")
+  cat(sprintf("  sections fitted here %d, in section 15 %d, in both %d\n",
+              nrow(here), nrow(ref), nrow(m)))
+  if (length(lost))
+    cat(sprintf("  fitted in section 15 but not here (reason in the log): %s\n", paste(lost, collapse = ", ")))
+  if (length(extra))
+    stop(where, " halted: section(s) fitted here but not in section 15: ", paste(extra, collapse = ", "),
+         ". The inclusion rules differ, so nothing below is comparable.")
+  if (!nrow(m) || !is.finite(dmax) || dmax > tol)
+    stop(sprintf(paste0("%s halted: per-section estimates differ from section 15 (largest difference %s). ",
+                        "Scoring or model differs; nothing below is interpretable."), where, format(dmax)))
+  ref_pool  <- pool_with_p(m$est_s15, m$var_s15, m$sample_id)
+  here_pool <- pool_with_p(m$est, m$var, m$sample_id)
+  cat(sprintf("  largest per-section difference %.1e\n", dmax))
+  cat(sprintf("  pooled here %+.6f   section 15 on the same sections %+.6f   (%s)\n",
+              here_pool$est, ref_pool$est, k_lab(ref_pool)))
+  if (length(lost)) {
+    full <- iso_con_pooled$est[iso_con_pooled$outcome == outcome & iso_con_pooled$contrast == "interaction_diff"]
+    cat(sprintf("  section 15 on all its sections: %+.6f (differs only by the section(s) listed above)\n", full))
+  }
+  cat("  PASSED\n")
+  invisible(ref_pool)
+}
 
 
 ################################################################################
 ## 13. FIGURE 4, REBUILT FROM ONE JOINT MODEL, WITH THE P VALUE ON IT
 ##
-##   BRCA NOTE: the reasoning in this header was written for the PDAC
-##   cohort. Any statement about what the data showed, which module worked,
-##   or how many tumours were usable describes PDAC, not BRCA. The code
-##   below is unchanged except where tagged "BRCA:".
-##                                             (Valerio, lab meeting 3, Aug 2026)
-##
-## WHAT HE ASKED FOR
-##   He was looking at the crossing-lines slide when he said "I need the P value
-##   for the shape. I need the P value for the difference of the two." He wanted
-##   the number ON THAT FIGURE.
-##
-## WHY THE ORIGINAL FIGURE 4 COULD NOT CARRY A P VALUE
-##   Its two curves come from two SEPARATE models fitted to the SAME spots
-##   (section 10 for collagen, section 11 for ER stress). Coefficients from two
-##   separate fits cannot be compared with a simple test: their sampling errors
-##   are correlated and that correlation was never estimated.
-##
-## WHAT THIS SECTION DOES
-##   Fits ONE model per tumour containing both interactions:
-##
-##     y ~ zHyp * zCol + zHyp * zER + ziCAF + zERAD  [+ zDepth]
-##
-##   Every quantity the figure needs is then a contrast on that single fit, so
-##   vcov() supplies all covariances and nothing has to be assumed.
-##
-## THE ONE THING NOT TO OVERCLAIM
-##   The two lines CONVERGE as hypoxia rises. Whether they SWAP ORDER is not
-##   established: the crossing sits where the difference is no longer
-##   significant. The figure labels this itself.
+##   One model per section containing both interactions:
+##       y ~ zHyp * zCol + zHyp * zER + ziCAF + zERAD  [+ zDepth]
+##   so every quantity the figure needs is a contrast on a single fit and
+##   vcov() supplies all covariances. All predictors are z-scored within the
+##   section, so every effect is per 1 SD.
+##   Converging lines are not the same as lines that swap order; the report
+##   and the figure say which one the data support.
 ################################################################################
 
 stopifnot(exists("MODULES"), exists("meta_pool"), exists("work"), exists("agg"))
@@ -2578,7 +2460,7 @@ if (!all(c("ERstressStrict", "ERAD") %in% names(MODULES)))
 ## ============================================================================
 ## 13.0  SETTINGS
 ## ============================================================================
-JOINT_ES           <- "ERstressStrict"   # strict 24 gene module, the primary one
+JOINT_ES           <- "ERstressStrict"
 JOINT_MIN_SPOTS    <- 30
 JOINT_ADJUST_DEPTH <- ADJUST_DEPTH       # derived, never set by hand
 JOINT_Z_GRID       <- seq(-2, 2, length.out = 41)
@@ -2598,41 +2480,14 @@ LAB_COL <- "Collagen synthesis"
 LAB_ER  <- "ER stress"
 LAB_DIF <- "difference"
 
-## ============================================================================
-## 13.0a  RUN STATE GATE   *** THE FIX FOR FAULT 1 ***
-##
-##   Three separate things have to agree before any model is fitted: the master
-##   flag, the filename suffix, and the section-local flag. Previously they
-##   could disagree silently, which produced two identical files under two
-##   names. Now a disagreement is a hard stop.
-##
-##   This runs BEFORE the cohort loop, so a wrong state costs a second rather
-##   than twenty minutes.
-## ============================================================================
 assert_run_state("Section 13")
-
-## ============================================================================
-## 13.0b  RUN MANIFEST   *** PART OF THE FIX FOR FAULT 2 ***
-##
-##   Records everything that could make two runs differ. Written once per run,
-##   next to the outputs. When numbers move between runs, this is the first
-##   thing to diff, and it costs nothing to produce.
-## ============================================================================
 write_run_manifest()
 
 ## ============================================================================
-## 13.1  HELPERS
+## 13.1  SCORE, THEN z-STANDARDISE WITHIN THE SECTION
+##       Also returns a fingerprint of each module score so two runs can be
+##       compared and any drift traced to scoring or to modelling.
 ## ============================================================================
-
-## meta_pool returns est / lower / upper but no SE and no p. Recover the SE from
-## the interval rather than editing meta_pool.
-## NOTE: the Wald statistic is zstat, NOT z. In 13.5 one grouping variable is z
-## (the hypoxia grid) and group_modify() refuses to return a column named after
-## a grouping variable. Do not rename it back.
-## score every module, then z standardise within this tumour.
-## v5: also returns a FINGERPRINT of each module score, so two runs can be
-## compared directly and the cause of any drift localised to scoring or to
-## modelling. This is the diagnostic for fault 2.
 joint_expr_one <- function(rds_path, sid) {
   obj <- readRDS(rds_path)
   obj <- tryCatch(UpdateSeuratObject(obj), error = function(e) obj)
@@ -2645,13 +2500,13 @@ joint_expr_one <- function(rds_path, sid) {
     g    <- intersect(full, rownames(obj))
     need <- min_genes_for(full)
     if (length(g) < need) {
-      log_msg("  %s: %s has only %d/%d genes (need %d) -> sample skipped",
+      log_msg("  %s: %s has only %d/%d genes (need %d) -> section skipped",
               sid, nm, length(g), length(full), need)
       return(NULL)
     }
     set.seed(SEED)
     obj <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
-                                   assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
+                                              assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
                     error = function(e) NULL)
     if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) return(NULL)
     names(obj@meta.data)[names(obj@meta.data) == paste0(nm, "1")] <- nm
@@ -2681,13 +2536,11 @@ joint_expr_one <- function(rds_path, sid) {
   as.numeric((x - mean(x, na.rm = TRUE)) / s) }
   for (nm in JOINT_SCORE_MODULES) {
     v <- zz(d[[nm]])
-    if (is.null(v)) { log_msg("  %s: %s has zero variance -> sample skipped", sid, nm); return(NULL) }
+    if (is.null(v)) { log_msg("  %s: %s has zero variance -> section skipped", sid, nm); return(NULL) }
     d[[ JOINT_RENAME[[nm]] ]] <- v
   }
   if (JOINT_ADJUST_DEPTH) {
-    ## log1p first: read counts are strongly right skewed, so on the raw scale a
-    ## handful of very deep spots would dominate the coefficient
-    v <- zz(log1p(d[[cnt_col[1]]]))
+    v <- zz(log1p(d[[cnt_col[1]]]))   # log1p: counts are strongly right skewed
     if (is.null(v)) return(NULL)
     d$zDepth <- v
   }
@@ -2698,7 +2551,7 @@ joint_expr_one <- function(rds_path, sid) {
 }
 
 ## ============================================================================
-## 13.2  FIT ONE TUMOUR
+## 13.2  FIT ONE SECTION
 ## ============================================================================
 fit_joint_one <- function(d, sid) {
   out <- list(coef = NULL, contrast = NULL, curve = NULL, modelcheck = NULL)
@@ -2712,16 +2565,11 @@ fit_joint_one <- function(d, sid) {
   
   b <- coef(f); V <- vcov(f)
   
-  ## *** THE REAL FIX FOR FAULT 1 ***
-  ## Do not trust the flag. Look at the model that was actually fitted. If the
-  ## flag says depth adjusted and zDepth is not among the coefficients, or vice
-  ## versa, the run is not what it claims to be and must not write files.
+  ## read the model, not the flag
   has_depth <- "zDepth" %in% names(b)
   if (!identical(has_depth, isTRUE(JOINT_ADJUST_DEPTH)))
-    stop(sprintf(paste0("Section 13, tumour %s: JOINT_ADJUST_DEPTH = %s but the fitted model %s ",
-                        "a zDepth term. The flag and the model disagree, which is how the ",
-                        "identical adjusted/unadjusted files were produced. Start a fresh ",
-                        "session from section 0."),
+    stop(sprintf(paste0("Section 13, section %s: JOINT_ADJUST_DEPTH = %s but the fitted model %s ",
+                        "a zDepth term. Start a fresh session from section 0."),
                  sid, JOINT_ADJUST_DEPTH, if (has_depth) "DOES contain" else "does NOT contain"))
   out$modelcheck <- data.frame(sample_id = sid, has_zDepth = has_depth,
                                n_coef = length(b), formula = rhs, row.names = NULL)
@@ -2735,9 +2583,7 @@ fit_joint_one <- function(d, sid) {
                          log_OR = s[tm, "Estimate"], SE = s[tm, "Std. Error"],
                          p = s[tm, "Pr(>|z|)"], row.names = NULL)
   
-  ## Contrast machinery. L is a row vector over the coefficient names; the
-  ## estimate is L b and its variance is L V L'. Written this way every
-  ## covariance term is included automatically and cannot be forgotten.
+  ## estimate L b, variance L V L' : every covariance is included
   Lvec <- function(w) { L <- setNames(numeric(length(b)), names(b))
   for (nm in names(w)) L[nm] <- w[[nm]]; L }
   est_of <- function(L) as.numeric(L %*% b)
@@ -2795,15 +2641,14 @@ jcur_all  <- bind(joint_acc$curve)
 jfp_all   <- bind(joint_acc$fingerprint)
 jmc_all   <- bind(joint_acc$modelcheck)
 
-if (nrow(jcon_all) == 0) stop("Section 13: no tumour produced a usable joint fit.")
+if (nrow(jcon_all) == 0) stop("Section 13: no section produced a usable joint fit.")
 
-## ---- model check summary, printed loudly ----------------------------------
 cat("\n--- model verification (reads the fitted models, not the flag) ---\n")
-cat(sprintf("  tumours fitted            : %d\n", nrow(jmc_all)))
+cat(sprintf("  sections fitted           : %d\n", nrow(jmc_all)))
 cat(sprintf("  models containing zDepth  : %d\n", sum(jmc_all$has_zDepth)))
 cat(sprintf("  formula used              : %s\n", unique(jmc_all$formula)[1]))
 if (length(unique(jmc_all$formula)) > 1)
-  stop("Section 13: more than one formula was fitted across tumours. Aborting.")
+  stop("Section 13: more than one formula was fitted across sections. Aborting.")
 cat(sprintf("  -> this run IS %s\n",
             if (all(jmc_all$has_zDepth)) "DEPTH ADJUSTED" else "UNADJUSTED"))
 
@@ -2813,10 +2658,11 @@ write_out(jfp_all,   "JOINT_module_fingerprint")
 write_out(jmc_all,   "JOINT_model_check")
 
 k_used <- dplyr::n_distinct(jcon_all$sample_id)
-log_msg("Section 13: %d tumours contributed.", k_used)
+log_msg("Section 13: %d sections (%d patients) contributed.", k_used,
+        length(unique(patient_of(unique(jcon_all$sample_id)))))
 if (k_used < nrow(work)) {
   miss <- setdiff(work$sample_id, unique(jcon_all$sample_id))
-  cat(sprintf("\n  tumours excluded from section 13 (%d): %s\n", length(miss),
+  cat(sprintf("\n  sections excluded from section 13 (%d): %s\n", length(miss),
               paste(miss, collapse = ", ")))
 }
 
@@ -2855,7 +2701,7 @@ cross_z <- NA_real_; cross_sig <- NA
     i1 <- ix[1]
     x1 <- jdif$z[i1];   x2 <- jdif$z[i1 + 1]
     y1 <- jdif$est[i1]; y2 <- jdif$est[i1 + 1]
-    cross_z   <- x1 - y1 * (x2 - x1) / (y2 - y1)
+    cross_z   <- if (y2 != y1) x1 - y1 * (x2 - x1) / (y2 - y1) else x1
     cross_sig <- jdif$sig[which.min(abs(jdif$z - cross_z))]
   }
 }
@@ -2882,19 +2728,19 @@ cat(sprintf("SECTION 13  [%s]  run_id %s\n",
             if (JOINT_ADJUST_DEPTH) "DEPTH ADJUSTED" else "UNADJUSTED", RUN_ID))
 cat(strrep("=", 74), "\n", sep = "")
 cat(sprintf("Model : y ~ %s\n", unique(jmc_all$formula)[1]))
-cat(sprintf("ER stress module : %s   |   sections fitted : %d   |   pooled over %s\n", JOINT_ES, k_used, K_UNIT))   # BRCA
-cat("All predictors z scored WITHIN tumour, so every effect is per 1 SD.\n")
+cat(sprintf("ER stress module : %s   |   sections fitted : %d   |   pooled over %s\n", JOINT_ES, k_used, K_UNIT))
+cat("All predictors z scored WITHIN section, so every effect is per 1 SD.\n")
 
 cat("\n--- pooled coefficients from the joint model ---\n")
 for (i in seq_len(nrow(jcoef_pooled))) with(jcoef_pooled[i, ],
                                             cat(sprintf("  %-16s beta %+7.4f  OR %5.2f (%.2f-%.2f)  k=%2d  I2=%3.0f%%  p=%s\n",
-                                                        term, est, OR, lower_OR, upper_OR, k, I2, fmt_p(p))))
+                                                        term, est, OR, lower_OR, upper_OR, as.integer(k), I2, fmt_p(p))))
 
-cat("\n--- THE ANSWER TO VALERIO'S QUESTION ---\n")
+cat("\n--- do the collagen and ER stress slopes respond differently to hypoxia? ---\n")
 if (nrow(ri) == 1) {
   cat("  (collagen x hypoxia) minus (ER stress x hypoxia):\n")
-  cat(sprintf("     estimate %+.4f   95%% CI %+.4f to %+.4f   k=%d   I2=%.0f%%   p = %s\n",
-              ri$est, ri$lower, ri$upper, ri$k, ri$I2, fmt_p(ri$p)))
+  cat(sprintf("     estimate %+.4f   95%% CI %+.4f to %+.4f   %s   I2=%.0f%%   p = %s\n",
+              ri$est, ri$lower, ri$upper, k_lab(ri), ri$I2, fmt_p(ri$p)))
   if (is.finite(ri$p) && ri$p < JOINT_ALPHA) {
     cat(sprintf("     -> the two lines DO respond to hypoxia at different rates (%s).\n",
                 if (ri$est < 0) "collagen falls relative to ER stress as hypoxia rises"
@@ -2927,8 +2773,8 @@ if (is.finite(cross_z)) {
     cat("  difference IS significant, so they do swap order.\n")
   } else {
     cat("  difference is NOT significant.\n")
-    cat("  ESTABLISHED     : the two effects CONVERGE as hypoxia rises.\n")
-    cat("  NOT ESTABLISHED : that they swap order.\n")
+    cat("  Supported     : the two effects converge as hypoxia changes.\n")
+    cat("  NOT supported : that they swap order.\n")
   }
 } else {
   cat("  The two lines do not meet anywhere within +/- 2 SD of hypoxia.\n")
@@ -2936,8 +2782,8 @@ if (is.finite(cross_z)) {
 
 cat("\nCAVEATS\n")
 cat("  1. Spatial autocorrelation is not modelled. Every CI here is too narrow.\n")
-cat("     Section 16 measures how large that is. Quote empirical percentiles.\n")
-cat("  2. Per 1 SD within tumour. Not comparable to sections 10 and 11.\n")
+cat("     Sections 16 and 26 measure how large that is. Quote empirical percentiles.\n")
+cat("  2. Per 1 SD within section. Not comparable to sections 10 and 11.\n")
 cat(sprintf("  3. Depth adjustment is %s (verified against the fitted models).\n",
             if (JOINT_ADJUST_DEPTH) "ON" else "OFF"))
 cat("  4. Associational, mRNA level.\n")
@@ -2945,13 +2791,18 @@ cat(strrep("=", 74), "\n", sep = "")
 
 ## ============================================================================
 ## 13.7  FIGURE 4, REBUILT
+##       v5 (C2): title and annotations are computed from this run.
 ## ============================================================================
 if (!exists("FIG_STYLES") || !exists("theme_fig")) {
   cat("\n  Figure skipped: section 12 has not run.\n")
-} else {
-  stat_lab <- sprintf("Difference between the two slopes  %+.3f  (95%% CI %+.3f to %+.3f)\np = %s      k = %d %s      I2 = %.0f%%%s",   # BRCA: k unit
-                      ri$est, ri$lower, ri$upper, fmt_p(ri$p), ri$k, K_UNIT, ri$I2,
+} else if (nrow(ri) == 1) {
+  stat_lab <- sprintf("Difference between the two slopes  %+.3f  (95%% CI %+.3f to %+.3f)\np = %s      %s      I2 = %.0f%%%s",
+                      ri$est, ri$lower, ri$upper, fmt_p(ri$p), k_lab(ri), ri$I2,
                       if (JOINT_ADJUST_DEPTH) "\nsequencing depth adjusted" else "")
+  fig4_title <- if (is.finite(ri$p) && ri$p < JOINT_ALPHA)
+    sprintf("The collagen effect %s relative to ER stress as hypoxia rises",
+            if (ri$est < 0) "weakens" else "strengthens")
+  else "No evidence that the collagen and ER stress effects respond differently to hypoxia"
   
   y_top <- max(jlines$upper_OR, na.rm = TRUE)
   y_bot <- min(jlines$lower_OR, na.rm = TRUE)
@@ -2959,19 +2810,15 @@ if (!exists("FIG_STYLES") || !exists("theme_fig")) {
   
   for (sn in names(FIG_STYLES)) {
     S <- FIG_STYLES[[sn]]
-    outdir <- file.path(agg, S$dir); dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
-    
     p4 <- ggplot(jlines, aes(z, OR))
     
     if (is.finite(sig_lo)) {
       p4 <- p4 +
         annotate("rect", xmin = sig_lo, xmax = sig_hi,
                  ymin = -Inf, ymax = Inf, fill = "grey40", alpha = 0.14) +
-        annotate("segment", x = sig_hi, xend = sig_hi, y = -Inf, yend = Inf,
-                 linewidth = S$lwd * 0.6, colour = "grey55") +
-        annotate("text", x = sig_hi, y = y_hi, hjust = -0.06, vjust = 1.4,
+        annotate("text", x = (sig_lo + sig_hi) / 2, y = y_top, vjust = -0.4,
                  size = S$lab * 0.95, colour = "grey40", lineheight = 1.1,
-                 label = sprintf("slopes no longer\ndistinguishable\n(above %+.1f SD)", sig_hi))
+                 label = sprintf("effects differ (p < %.2f)\n%+.1f to %+.1f SD", JOINT_ALPHA, sig_lo, sig_hi))
     }
     
     p4 <- p4 +
@@ -3000,53 +2847,38 @@ if (!exists("FIG_STYLES") || !exists("theme_fig")) {
                lineheight = 1.15) +
       scale_y_log10() +
       coord_cartesian(xlim = range(jlines$z), ylim = c(y_bot, y_hi)) +
-      labs(x = "Hypoxia score (SD within tumour)", y = XLAB_OR,
-           caption = paste0("Both slopes from one joint model per tumour; all covariances included. ",
+      labs(x = "Hypoxia score (SD within section)", y = XLAB_OR,
+           caption = paste0("Both slopes from one joint model per section; all covariances included. ",
                             if (is.finite(sig_lo))
-                              sprintf("Shaded: the two slopes differ (p < %.2f).", JOINT_ALPHA)
+                              sprintf("Shaded: hypoxia range where the two effects differ (p < %.2f).", JOINT_ALPHA)
                             else "")) +
       theme_fig(S) + theme(legend.position = "top")
     
     if (isTRUE(S$titles))
       p4 <- p4 + labs(
-        title = "P4HA1 stops preferring collagen as hypoxia rises",
+        title = fig4_title,
         subtitle = paste0("Effect of each module on P4HA1 detection, as a function of hypoxia",
                           if (JOINT_ADJUST_DEPTH) " (sequencing depth adjusted)" else ""))
     
-    w <- if (isTRUE(S$split)) S$w2 else S$w1 * 1.5
-    h <- if (isTRUE(S$split)) S$h_full else MM(68)
-    for (dv in S$devices) {
-      f <- file.path(outdir, outf("Figure4_joint_effect_modification", dv))
-      tryCatch({
-        if (dv == "pdf") ggsave(f, p4, width = w, height = h, device = PDF_DEV, bg = "white")
-        else             ggsave(f, p4, width = w, height = h, dpi = S$dpi, bg = "white")
-      }, error = function(e) log_msg("  fig failed (%s): %s", basename(f), conditionMessage(e)))
-    }
-    cat(sprintf("  %s written to %s\n", outf("Figure4_joint_effect_modification", "png"), S$dir))
+    save_fig(p4, S, sub("\\.csv$", "", outf("Figure4_joint_effect_modification")),
+             if (isTRUE(S$split)) S$w2 else S$w1 * 1.5,
+             if (isTRUE(S$split)) S$h_full else MM(68))
   }
 }
 
 log_msg("Section 13 complete.")
 
-
 ################################################################################
 ## 15. THE SPECIFICITY TEST: P4HA1 vs P4HA2 vs P4HA3
 ##
-##   BRCA NOTE: the reasoning in this header was written for the PDAC
-##   cohort. Any statement about what the data showed, which module worked,
-##   or how many tumours were usable describes PDAC, not BRCA. The code
-##   below is unchanged except where tagged "BRCA:".
-##
-##   P4HA1 and P4HA2 hydroxylate collagen. P4HA3 does not. If the pattern is
-##   about the enzyme it should appear in the first two and fail in the third.
-##   If it appears in all three it is gene-family co-regulation and the
-##   mechanistic reading collapses. This section is built to be able to return
-##   the second answer; if it cannot, it is not a test.
-##
-##   THE MODEL DOES NOT CHANGE between outcomes. Identical predictors, spots,
-##   standardisation and pooling; only y changes. P4HA1 is NOT added as a
-##   covariate when P4HA2 is the outcome: the isoforms are co-regulated, so
-##   conditioning on one while modelling another changes the estimand.
+##   v5.2: the old premise ("P4HA3 does not hydroxylate collagen") was wrong.
+##   All three genes encode collagen P4H alpha subunits, and P4HA3 forms an
+##   active collagen hydroxylase (Kukkola et al., J Biol Chem 2003,
+##   doi:10.1074/jbc.M306806200). This section therefore asks only whether
+##   the pattern is specific to P4HA1 among the three alpha subunits; it is
+##   NOT a test of enzyme function versus gene family.
+##   The model does not change between outcomes: identical predictors, spots,
+##   standardisation and pooling; only y changes.
 ################################################################################
 
 stopifnot(exists("pool_with_p"), exists("fmt_p"))
@@ -3074,7 +2906,7 @@ II_ER  <- paste0(IT_HYP, ":", IT_ER)
 assert_run_state("Section 15")
 
 ## ============================================================================
-## 15.1  CIRCULARITY GATE  -- hard stop, not a warning
+## 15.1  CIRCULARITY GATE  -- hard stop
 ## ============================================================================
 cat("\n", strrep("=", 74), "\n", sep = "")
 cat("SECTION 15.1  CIRCULARITY GATE\n")
@@ -3091,9 +2923,7 @@ for (out_gene in ISO_OUTCOMES) {
 if (iso_fail) stop("Section 15 halted: an outcome gene appears in a predictor module.")
 
 ## ============================================================================
-## 15.2  SCORE AND STANDARDISE ONCE PER TUMOUR
-##       Scored once and reused for all three outcomes, so nothing can differ
-##       because of AddModuleScore's RNG. Fingerprint recorded as in 13.
+## 15.2  SCORE AND STANDARDISE ONCE PER SECTION (reused for all outcomes)
 ## ============================================================================
 iso_expr_one <- function(rds_path, sid) {
   obj <- readRDS(rds_path)
@@ -3102,7 +2932,7 @@ iso_expr_one <- function(rds_path, sid) {
   
   missing_out <- setdiff(ISO_OUTCOMES, rownames(obj))
   if (length(missing_out)) {
-    log_msg("  %s: outcome gene(s) absent (%s) -> sample skipped",
+    log_msg("  %s: outcome gene(s) absent (%s) -> section skipped",
             sid, paste(missing_out, collapse = ", "))
     return(NULL)
   }
@@ -3113,13 +2943,13 @@ iso_expr_one <- function(rds_path, sid) {
     g    <- intersect(full, rownames(obj))
     need <- min_genes_for(full)
     if (length(g) < need) {
-      log_msg("  %s: %s has only %d/%d genes (need %d) -> sample skipped",
+      log_msg("  %s: %s has only %d/%d genes (need %d) -> section skipped",
               sid, nm, length(g), length(full), need)
       return(NULL)
     }
     set.seed(SEED)
     obj <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
-                                   assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
+                                              assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
                     error = function(e) NULL)
     if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) return(NULL)
     names(obj@meta.data)[names(obj@meta.data) == paste0(nm, "1")] <- nm
@@ -3143,7 +2973,7 @@ iso_expr_one <- function(rds_path, sid) {
   as.numeric((x - mean(x, na.rm = TRUE)) / s) }
   for (nm in ISO_SCORE_MODULES) {
     v <- zz(d[[nm]])
-    if (is.null(v)) { log_msg("  %s: %s zero variance -> sample skipped", sid, nm); return(NULL) }
+    if (is.null(v)) { log_msg("  %s: %s zero variance -> section skipped", sid, nm); return(NULL) }
     d[[ ISO_RENAME[[nm]] ]] <- v
   }
   if (ISO_ADJUST_DEPTH) {
@@ -3185,7 +3015,6 @@ fit_iso_one <- function(d, sid, out_gene) {
   
   b <- coef(f); V <- vcov(f)
   
-  ## same hard check as section 13: read the model, not the flag
   has_depth <- "zDepth" %in% names(b)
   if (!identical(has_depth, isTRUE(ISO_ADJUST_DEPTH)))
     stop(sprintf("Section 15, %s / %s: ISO_ADJUST_DEPTH = %s but the fitted model %s zDepth.",
@@ -3299,17 +3128,19 @@ cat(sprintf("SECTION 15  [%s]  run_id %s\n",
             if (ISO_ADJUST_DEPTH) "DEPTH ADJUSTED" else "UNADJUSTED", RUN_ID))
 cat(strrep("=", 74), "\n", sep = "")
 
-cat("\n--- which tumours contributed, per outcome ---\n")
+cat("\n--- which sections contributed, per outcome ---\n")
 for (og in ISO_OUTCOMES) {
   s <- iso_stat[iso_stat$outcome == og, ]
-  cat(sprintf("  %-6s fitted in %2d / %2d tumours   median events %5.0f\n",
-              og, sum(s$fitted), nrow(s), median(s$n_events[s$fitted], na.rm = TRUE)))
+  fs <- s$sample_id[s$fitted]
+  cat(sprintf("  %-6s fitted in %2d / %2d sections (%d patients)   median events %5.0f\n",
+              og, sum(s$fitted), nrow(s), length(unique(patient_of(fs))),
+              if (length(fs)) median(s$n_events[s$fitted]) else NA_real_))
   drop <- s[!s$fitted, ]
   if (nrow(drop))
     for (j in seq_len(nrow(drop)))
-      cat(sprintf("         excluded: %-26s %s\n", drop$sample_id[j], drop$reason[j]))
+      cat(sprintf("         excluded: %-30s %s\n", drop$sample_id[j], drop$reason[j]))
 }
-cat("  Name these tumours whenever you quote k.\n")
+cat("  Name these sections whenever you quote k.\n")
 
 cat("\n--- the two interaction terms, side by side ---\n")
 cat(sprintf("  %-18s %-8s %9s %19s %6s %6s %11s\n",
@@ -3319,7 +3150,7 @@ for (tm in c(II_COL, II_ER)) {
     r <- iso_coef_pooled[iso_coef_pooled$term == tm & iso_coef_pooled$outcome == og, ]
     if (!nrow(r)) next
     cat(sprintf("  %-18s %-8s %+9.4f  %+8.4f to %+8.4f %5d %5.0f%% %10s\n",
-                tm, og, r$est, r$lower, r$upper, r$k, r$I2, fmt_p(r$p)))
+                tm, og, r$est, r$lower, r$upper, as.integer(r$k), r$I2, fmt_p(r$p)))
   }
   cat("\n")
 }
@@ -3329,46 +3160,55 @@ for (og in ISO_OUTCOMES) {
   r <- iso_con_pooled[iso_con_pooled$outcome == og &
                         iso_con_pooled$contrast == "interaction_diff", ]
   if (!nrow(r)) next
-  cat(sprintf("  %-6s %+.4f  (95%% CI %+.4f to %+.4f)  k=%2d  I2=%3.0f%%  p = %-10s %s\n",
-              og, r$est, r$lower, r$upper, r$k, r$I2, fmt_p(r$p),
+  cat(sprintf("  %-6s %+.4f  (95%% CI %+.4f to %+.4f)  %s  I2=%3.0f%%  p = %-10s %s\n",
+              og, r$est, r$lower, r$upper, k_lab(r), r$I2, fmt_p(r$p),
               if (is.finite(r$p) && r$p < ISO_ALPHA) "SIGNIFICANT" else "not significant"))
 }
 
-## *** the branch that decides how you may describe P4HA3 ***
+## v5 (C2): the P4HA3 statement is decided by THIS run's numbers, including
+## whether the P4HA3 interval is narrow enough to rule out the P4HA1 effect.
 {
   a3 <- iso_con_pooled[iso_con_pooled$outcome == "P4HA3" &
                          iso_con_pooled$contrast == "interaction_diff", ]
   a1 <- iso_con_pooled[iso_con_pooled$outcome == "P4HA1" &
                          iso_con_pooled$contrast == "interaction_diff", ]
-  if (nrow(a3) == 1 && nrow(a1) == 1) {
-    cat("\n--- WHAT YOU MAY AND MAY NOT CLAIM ABOUT P4HA3 ---\n")
+  cat("\n--- WHAT YOU MAY AND MAY NOT CLAIM ABOUT P4HA3 ---\n")
+  if (nrow(a3) != 1 || nrow(a1) != 1) {
+    cat("  P4HA3 or P4HA1 could not be pooled; no claim is possible.\n")
+  } else {
+    sig1 <- is.finite(a1$p) && a1$p < ISO_ALPHA
     sig3 <- is.finite(a3$p) && a3$p < ISO_ALPHA
     same_sign <- sign(a3$est) == sign(a1$est)
-    if (!sig3) {
-      cat("  P4HA3 shows no interaction. Combined with its large and highly\n")
-      cat("  significant collagen main effect, that is a real negative rather than\n")
-      cat("  a power failure. The specificity claim stands.\n")
-    } else if (sig3 && same_sign) {
-      cat("  *** P4HA3 shows the SAME pattern and it IS significant. That is\n")
-      cat("  evidence for gene-family co-regulation, not enzyme function. The\n")
-      cat("  mechanistic reading does not survive. Report this. ***\n")
+    a3_covers_a1 <- is.finite(a3$lower) && a3$lower <= a1$est && a1$est <= a3$upper
+    cat(sprintf("  P4HA1 %+.4f (%s, p = %s)   P4HA3 %+.4f (95%% CI %+.4f to %+.4f, %s, p = %s)\n",
+                a1$est, k_lab(a1), fmt_p(a1$p), a3$est, a3$lower, a3$upper, k_lab(a3), fmt_p(a3$p)))
+    if (!sig1) {
+      cat("  P4HA1 itself shows no significant slope difference, so there is no\n")
+      cat("  pattern for P4HA3 to confirm or deny. No specificity claim is possible.\n")
+    } else if (!sig3 && !a3_covers_a1) {
+      cat("  P4HA3 shows no interaction AND its interval excludes the P4HA1 effect\n")
+      cat("  size. That is a real negative, not just a lack of power: the\n")
+      cat("  specificity reading is supported.\n")
+    } else if (!sig3) {
+      cat("  P4HA3 is not significant, BUT its interval still contains the P4HA1\n")
+      cat("  effect size. This is a lack of power, not evidence of no effect.\n")
+      cat("  Do NOT describe P4HA3 as 'showing no effect'.\n")
+    } else if (same_sign) {
+      cat("  *** P4HA3 shows the SAME pattern and it IS significant. The pattern is\n")
+      cat("  then shared by the collagen P4H alpha subunits, not specific to P4HA1. ***\n")
     } else {
-      cat("  *** P4HA3 is SIGNIFICANT but in the OPPOSITE direction to P4HA1.\n")
-      cat("  This is not the clean negative the specificity argument assumed, and\n")
-      cat("  it is not co-regulation either. Do NOT describe P4HA3 as showing no\n")
-      cat("  effect. It shows a different effect, which needs its own explanation\n")
-      cat("  before anything is claimed. If a previous email said otherwise, it\n")
-      cat("  needs correcting. ***\n")
+      cat("  *** P4HA3 is SIGNIFICANT but in the OPPOSITE direction to P4HA1. This\n")
+      cat("  is neither the clean negative the specificity argument assumes nor\n")
+      cat("  co-regulation. It needs its own explanation before anything is claimed. ***\n")
     }
   }
 }
 
 cat("\nCAVEATS\n")
 cat("  Spatial autocorrelation not modelled; all CIs too narrow.\n")
-cat("  Per 1 SD within tumour; not comparable to sections 10 and 11.\n")
+cat("  Per 1 SD within section; not comparable to sections 10 and 11.\n")
 cat("  Coefficient magnitudes are not comparable across genes with different\n")
-cat("  detection rates. Presence or absence of an interaction is, and that is\n")
-cat("  what the specificity result rests on.\n")
+cat("  detection rates. Presence or absence of an interaction is.\n")
 cat("  No multiple-comparison correction applied.\n")
 cat(strrep("=", 74), "\n", sep = "")
 
@@ -3383,10 +3223,9 @@ if (exists("FIG_STYLES") && exists("theme_fig")) {
   lab_df <- do.call(rbind, lapply(ISO_OUTCOMES, function(og) {
     r <- iso_con_pooled[iso_con_pooled$outcome == og &
                           iso_con_pooled$contrast == "interaction_diff", ]
-    st <- iso_stat[iso_stat$outcome == og, ]
     if (!nrow(r)) return(NULL)
     data.frame(outcome = factor(og, ISO_OUTCOMES),
-               lab = sprintf("diff %+.3f, p = %s\nk = %d", r$est, fmt_p(r$p), sum(st$fitted)),
+               lab = sprintf("diff %+.3f, p = %s\n%s", r$est, fmt_p(r$p), k_lab(r)),
                row.names = NULL)
   }))
   
@@ -3396,8 +3235,6 @@ if (exists("FIG_STYLES") && exists("theme_fig")) {
   
   for (sn in names(FIG_STYLES)) {
     S <- FIG_STYLES[[sn]]
-    outdir <- file.path(agg, S$dir); dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
-    
     p7 <- ggplot(lines_df, aes(z, OR)) +
       geom_hline(yintercept = 1, linetype = "22", linewidth = S$lwd * 0.7, colour = "grey40") +
       geom_ribbon(aes(ymin = lower_OR, ymax = upper_OR, fill = series), alpha = .16, colour = NA) +
@@ -3408,9 +3245,10 @@ if (exists("FIG_STYLES") && exists("theme_fig")) {
                                             c("Collagen synthesis", "ER stress")), name = NULL) +
       facet_wrap(~ outcome, nrow = 1) + scale_y_log10() +
       coord_cartesian(ylim = c(y_bot, y_hi)) +
-      labs(x = "Hypoxia score (SD within tumour)",
+      labs(x = "Hypoxia score (SD within section)",
            y = "Odds ratio for detection (95% CI)",
-           caption = paste0("Identical model, predictors and spots for all three outcomes; only the outcome gene differs.",
+           caption = paste0("Identical model and predictors; only the outcome gene differs. Each gene is fitted only in sections with >= ",
+                            ISO_MIN_EVENTS, " detected spots, so k differs between panels.",
                             if (ISO_ADJUST_DEPTH) " Sequencing depth adjusted." else "")) +
       theme_fig(S) + theme(legend.position = "top")
     
@@ -3421,18 +3259,11 @@ if (exists("FIG_STYLES") && exists("theme_fig")) {
                            lineheight = 1.1)
     
     if (isTRUE(S$titles))
-      p7 <- p7 + labs(title = "Does the pattern follow enzyme function or the gene family?",
-                      subtitle = "P4HA1 and P4HA2 hydroxylate collagen; P4HA3 does not")
+      p7 <- p7 + labs(title = "Is the pattern specific to P4HA1?",
+                      subtitle = "The three collagen prolyl 4-hydroxylase alpha subunits, same model")
     
-    h <- if (isTRUE(S$split)) S$h_full else MM(72)
-    for (dv in S$devices) {
-      f <- file.path(outdir, outf("Figure7_isoform_comparison", dv))
-      tryCatch({
-        if (dv == "pdf") ggsave(f, p7, width = S$w2, height = h, device = PDF_DEV, bg = "white")
-        else             ggsave(f, p7, width = S$w2, height = h, dpi = S$dpi, bg = "white")
-      }, error = function(e) log_msg("  fig failed (%s): %s", basename(f), conditionMessage(e)))
-    }
-    cat(sprintf("  %s written to %s\n", outf("Figure7_isoform_comparison", "png"), S$dir))
+    save_fig(p7, S, sub("\\.csv$", "", outf("Figure7_isoform_comparison")),
+             S$w2, if (isTRUE(S$split)) S$h_full else MM(72))
   }
 }
 
@@ -3442,20 +3273,10 @@ log_msg("Section 15 complete.")
 ################################################################################
 ## 16. THE RANDOM-GENE CONTROL
 ##
-##   BRCA NOTE: the reasoning in this header was written for the PDAC
-##   cohort. Any statement about what the data showed, which module worked,
-##   or how many tumours were usable describes PDAC, not BRCA. The code
-##   below is unchanged except where tagged "BRCA:".
-##
-##   The model p value assumes spots are independent. They are not: tissue is
-##   made of homogeneous regions, so neighbouring spots repeat each other and
-##   the model believes it has more information than it does. A reference built
-##   from real genes in the same tissue carries the same inflation, so the
-##   comparison is immune to that assumption.
-##
-##   Genes are matched to P4HA1 on detection rate. Without matching the
-##   reference would fill with sparse noisy genes and P4HA1 would look extreme
-##   for a trivial reason.
+##   Model p values assume independent spots. A reference built from real
+##   genes in the same tissue carries the same spatial inflation, so the
+##   comparison is immune to that assumption. Genes are matched to P4HA1 on
+##   detection rate.
 ################################################################################
 
 RATES_CSV <- file.path(agg, "DETECT_cohort_gene_rates.csv")
@@ -3470,7 +3291,7 @@ RND_SEED         <- 20260831
 RND_CALIPER      <- 0.25
 RND_MIN_EVENTS   <- 70
 RND_MIN_SPOTS    <- 30
-RND_MIN_K        <- 15   # BRCA: kept from PDAC. Now counts patients: 15 of 21 primary (PDAC: 15 of 23 sections)
+RND_MIN_K_FRAC   <- 2 / 3     # share of pooling units a gene must be pooled over
 RND_ES           <- "ERstressStrict"
 RND_ADJUST_DEPTH <- ADJUST_DEPTH    # derived, never set by hand
 
@@ -3486,27 +3307,28 @@ RI_ER  <- paste0(RT_HYP, ":", RT_ER)
 assert_run_state("Section 16")
 
 ## ============================================================================
-## 16.1  CHOOSE THE GENES
+## 16.1  CHOOSE THE SECTIONS AND THE GENES
+##       Built on the sections where P4HA1 itself can be modelled (at least
+##       RND_MIN_EVENTS positive and negative spots). A section with P4HA1 in a
+##       handful of spots falls under the detection cache threshold, and the
+##       "present in every section" filter would then drop P4HA1 itself.
 ## ============================================================================
 rates <- read.csv(RATES_CSV, stringsAsFactors = FALSE)
 
-## BRCA: build the comparison on the sections where P4HA1 itself can be
-## modelled (at least RND_MIN_EVENTS positive and negative spots), the same
-## sections section 15 fits P4HA1 on. A section where P4HA1 is seen in a
-## handful of spots (HT397B1-S1H3A1U41Bp1: 3 spots) falls under the detection
-## cache threshold, so P4HA1 is missing from its rates and the "present in
-## every section" filter below then drops P4HA1 itself. In PDAC every section
-## passed this rule, so there it changes nothing.
 det16 <- read.csv(file.path(agg, "DETECT_p4ha_per_sample.csv"), stringsAsFactors = FALSE)
 det16 <- det16[det16$gene == "P4HA1" & as.logical(det16$present), , drop = FALSE]
 RND_SECTIONS <- det16$sample_id[det16$n_detected >= RND_MIN_EVENTS &
                                   (det16$n_spots - det16$n_detected) >= RND_MIN_EVENTS]
+RND_SECTIONS <- intersect(RND_SECTIONS, work$sample_id)
 rnd_dropped <- setdiff(work$sample_id, RND_SECTIONS)
 if (length(rnd_dropped))
   log_msg("Section 16: %d section(s) left out, P4HA1 below %d events: %s",
           length(rnd_dropped), RND_MIN_EVENTS, paste(rnd_dropped, collapse = ", "))
 if (length(RND_SECTIONS) < 2) stop("Section 16: fewer than 2 sections where P4HA1 can be modelled.")
 rates <- rates[rates$sample_id %in% RND_SECTIONS, , drop = FALSE]
+
+## a gene enters the reference only if pooled over two thirds of the units
+RND_MIN_K <- max(2L, as.integer(ceiling(RND_MIN_K_FRAC * n_units(RND_SECTIONS))))
 
 gene_med <- rates %>%
   group_by(gene) %>%
@@ -3516,8 +3338,7 @@ gene_med <- rates %>%
 target <- gene_med$median_rate[gene_med$gene == "P4HA1"]
 if (!length(target)) stop("P4HA1 not in the cached detection rates.")
 
-## Not just the outcome genes: every gene inside a predictor module has to go
-## too, or a "random" gene could be a member of the module it is tested against.
+## every outcome gene and every gene inside a predictor module is excluded
 EXCLUDE <- unique(c("P4HA1", "P4HA2", "P4HA3", "P4HB", "PLOD1", "PLOD2", "PLOD3",
                     unlist(MODULES[RND_SCORE_MODULES], use.names = FALSE)))
 
@@ -3529,11 +3350,14 @@ pool_genes <- gene_med %>%
 cat("\n", strrep("=", 74), "\n", sep = "")
 cat("SECTION 16.1  GENE SELECTION\n")
 cat(strrep("=", 74), "\n", sep = "")
+cat(sprintf("  sections used               : %d (%d %s)\n",
+            length(RND_SECTIONS), n_units(RND_SECTIONS), K_UNIT))
+cat(sprintf("  minimum k per pooled gene   : %d %s\n", RND_MIN_K, K_UNIT))
 cat(sprintf("  P4HA1 median detection rate : %.3f\n", target))
 cat(sprintf("  caliper                     : %.0f%% relative (%.3f to %.3f)\n",
             100 * RND_CALIPER, target * (1 - RND_CALIPER), target * (1 + RND_CALIPER)))
-cat(sprintf("  genes present in all tumours: %d\n", nrow(gene_med)))
-cat(sprintf("  eligible inside the caliper : %d\n", nrow(pool_genes)))
+cat(sprintf("  genes present in all sections: %d\n", nrow(gene_med)))
+cat(sprintf("  eligible inside the caliper  : %d\n", nrow(pool_genes)))
 
 if (nrow(pool_genes) < RND_N_GENES) {
   cat(sprintf("  *** only %d eligible. Using all of them. Describe the reference as\n", nrow(pool_genes)))
@@ -3544,6 +3368,7 @@ if (nrow(pool_genes) < RND_N_GENES) {
   set.seed(RND_SEED)
   sel <- pool_genes[sample(nrow(pool_genes), RND_N_GENES), ]
 }
+if (!nrow(sel)) stop("Section 16: no gene inside the caliper.")
 sel <- sel[order(sel$median_rate), ]
 write_out(sel, "RANDOM_gene_selection")
 
@@ -3551,17 +3376,11 @@ cat(sprintf("\n  selected: %d genes, detection median %.3f (range %.3f to %.3f)\
             nrow(sel), median(sel$median_rate), min(sel$median_rate), max(sel$median_rate)))
 cat(sprintf("  P4HA1 sits at the %.0fth percentile of the selected set.\n",
             100 * mean(sel$median_rate <= target)))
-cat("  A value above 50 is expected, since more genes exist at lower detection\n")
-cat("  rates. It works in your favour: lower-detection genes give noisier\n")
-cat("  estimates, widening the reference and making the test harder to pass.\n")
 
 RND_GENES <- sel$gene
 
 ## ============================================================================
-## 16.2  FIT, ONE TUMOUR AT A TIME
-##       Predictors are identical for every gene within a tumour, so the model
-##       matrix is built ONCE and glm.fit is called per gene. glm() 1000 times
-##       per tumour would spend most of the run parsing formulas.
+## 16.2  FIT, ONE SECTION AT A TIME (model matrix built once per section)
 ## ============================================================================
 rnd_contrast <- function(b, V) {
   need <- c(RT_COL, RT_ER, RI_COL, RI_ER)
@@ -3597,11 +3416,11 @@ rnd_one_tumour <- function(rds_path, sid) {
     full <- MODULES[[nm]]
     g    <- intersect(full, rownames(obj))
     if (length(g) < min_genes_for(full)) {
-      log_msg("  %s: %s coverage too low -> sample skipped", sid, nm); return(NULL)
+      log_msg("  %s: %s coverage too low -> section skipped", sid, nm); return(NULL)
     }
     set.seed(SEED)
     obj <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
-                                   assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
+                                              assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
                     error = function(e) NULL)
     if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) return(NULL)
     names(obj@meta.data)[names(obj@meta.data) == paste0(nm, "1")] <- nm
@@ -3628,7 +3447,6 @@ rnd_one_tumour <- function(rds_path, sid) {
                 " + ziCAF + zERAD", if (RND_ADJUST_DEPTH) " + zDepth" else "")
   X <- model.matrix(as.formula(rhs), data = dz)
   
-  ## same hard check, on the design matrix this time
   has_depth <- "zDepth" %in% colnames(X)
   if (!identical(has_depth, isTRUE(RND_ADJUST_DEPTH)))
     stop(sprintf("Section 16, %s: RND_ADJUST_DEPTH = %s but the design matrix %s zDepth.",
@@ -3666,7 +3484,7 @@ rnd_acc <- list()
 for (i in seq_len(nrow(work))) {
   path <- work$path[i]; sid <- work$sample_id[i]
   if (is.na(path) || !file.exists(path)) next
-  if (!sid %in% RND_SECTIONS) next   # BRCA: see 16.1
+  if (!sid %in% RND_SECTIONS) next
   log_msg("[rnd %d/%d] %s", i, nrow(work), sid)
   r <- tryCatch(rnd_one_tumour(path, sid),
                 error = function(e) { log_msg("  rnd skipped: %s", conditionMessage(e)); NULL })
@@ -3676,21 +3494,22 @@ rnd_all <- bind(rnd_acc)
 if (nrow(rnd_all) == 0) stop("Section 16: no random gene produced a usable fit.")
 
 ## ============================================================================
-## 16.4  POOL EACH GENE ACROSS TUMOURS
+## 16.4  POOL EACH GENE ACROSS SECTIONS
 ## ============================================================================
 rnd_pooled <- rnd_all %>%
   group_by(gene) %>% group_modify(~ pool_with_p(.x$est, .x$var, .x$sample_id)) %>% ungroup()
 
 n_before <- nrow(rnd_pooled)
 rnd_pooled <- rnd_pooled[is.finite(rnd_pooled$est) & rnd_pooled$k >= RND_MIN_K, ]
+if (!nrow(rnd_pooled)) stop(sprintf("Section 16: no random gene was pooled over >= %d %s.", RND_MIN_K, K_UNIT))
 write_out(rnd_pooled, "RANDOM_pooled_per_gene")
 
 cat("\n", strrep("=", 74), "\n", sep = "")
 cat(sprintf("SECTION 16  [%s]  run_id %s\n",
             if (RND_ADJUST_DEPTH) "DEPTH ADJUSTED" else "UNADJUSTED", RUN_ID))
 cat(strrep("=", 74), "\n", sep = "")
-cat(sprintf("  genes attempted / pooled / kept : %d / %d / %d\n",
-            length(RND_GENES), n_before, nrow(rnd_pooled)))
+cat(sprintf("  genes attempted / pooled / kept (k >= %d) : %d / %d / %d\n",
+            RND_MIN_K, length(RND_GENES), n_before, nrow(rnd_pooled)))
 
 cat("\n  distribution of the pooled slope difference:\n")
 qq <- quantile(rnd_pooled$est, c(0, .025, .25, .5, .75, .975, 1))
@@ -3699,41 +3518,50 @@ cat(sprintf("     significant at 0.05 in %d of %d (%.1f%%)\n",
             sum(rnd_pooled$p < 0.05, na.rm = TRUE), nrow(rnd_pooled),
             100 * mean(rnd_pooled$p < 0.05, na.rm = TRUE)))
 cat("     About 5% would be expected. Well above that means the model p values\n")
-cat("     in this dataset are inflated, most likely by spatial autocorrelation.\n")
-cat("     Report the number. It is why the percentile below is what to quote.\n")
+cat("     are inflated, most likely by spatial autocorrelation.\n")
 
 ## ============================================================================
 ## 16.5  WHERE DO THE THREE ISOFORMS SIT?
+##       v5 (C7): each isoform is re-pooled on the sections the reference was
+##       built on, so observed and reference share the same sections.
 ## ============================================================================
 obs <- NULL
-iso_file <- file.path(agg, outf("ISOFORM_slope_difference_pooled"))
-if (file.exists(iso_file)) {
-  io <- read.csv(iso_file, stringsAsFactors = FALSE)
-  obs <- io[io$contrast == "interaction_diff", c("outcome", "est", "lower", "upper", "p", "k")]
-} else if (exists("iso_con_pooled")) {
-  obs <- as.data.frame(iso_con_pooled)[iso_con_pooled$contrast == "interaction_diff",
-                                       c("outcome", "est", "lower", "upper", "p", "k")]
+if (exists("iso_con")) {
+  ic <- iso_con[iso_con$contrast == "interaction_diff" & iso_con$sample_id %in% RND_SECTIONS, ]
+  if (nrow(ic))
+    obs <- as.data.frame(ic %>% group_by(outcome) %>%
+                           group_modify(~ pool_with_p(.x$est, .x$var, .x$sample_id)) %>% ungroup())
+} else {
+  iso_file <- file.path(agg, outf("ISOFORM_slope_difference_pooled"))
+  if (file.exists(iso_file)) {
+    io <- read.csv(iso_file, stringsAsFactors = FALSE)
+    obs <- io[io$contrast == "interaction_diff", ]
+    cat("\n  NOTE: section 15 is not in this session; isoforms are pooled on all of\n")
+    cat("  their own sections, not only the reference sections.\n")
+  }
 }
 
 ref_summary <- NULL
 if (!is.null(obs) && nrow(obs)) {
-  cat("\n--- where the three isoforms sit ---\n")
+  cat("\n--- where the three isoforms sit (same sections as the reference) ---\n")
   ref_summary <- do.call(rbind, lapply(seq_len(nrow(obs)), function(i) {
     o <- obs[i, ]
     p_dir <- mean(rnd_pooled$est <= o$est)
     p_mag <- mean(abs(rnd_pooled$est) >= abs(o$est))
-    data.frame(outcome = o$outcome, est = o$est, model_p = o$p,
+    data.frame(outcome = o$outcome, est = o$est, model_p = o$p, k = o$k,
                percentile = 100 * p_dir, emp_p_directional = p_dir,
                emp_p_magnitude = p_mag, n_reference = nrow(rnd_pooled), row.names = NULL)
   }))
   write_out(ref_summary, "RANDOM_reference_summary")
   
   for (i in seq_len(nrow(ref_summary))) with(ref_summary[i, ],
-                                             cat(sprintf("  %-6s effect %+.4f  percentile %5.1f  empirical p: directional %.4f, magnitude %.4f\n",
-                                                         outcome, est, percentile, emp_p_directional, emp_p_magnitude)))
-  cat("\n  Directional = fraction of random genes at least as negative. That is\n")
-  cat("  the one matching the hypothesis. Quote it and show the other; do not\n")
-  cat("  pick whichever is smaller.\n")
+                                             cat(sprintf("  %-6s effect %+.4f  k=%2d  percentile %5.1f  empirical p: directional %.4f, magnitude %.4f%s\n",
+                                                         outcome, est, as.integer(k), percentile, emp_p_directional, emp_p_magnitude,
+                                                         if (k < RND_MIN_K) "   (k below the reference minimum)" else "")))
+  cat("\n  Directional = fraction of random genes at least as negative. Quote it\n")
+  cat("  and show the other; do not pick whichever is smaller. P4HA2 and P4HA3\n")
+  cat("  are compared with a reference matched on P4HA1's detection rate, so\n")
+  cat("  their percentiles are only indicative.\n")
   
   a1 <- ref_summary[ref_summary$outcome == "P4HA1", ]
   if (nrow(a1) == 1) {
@@ -3751,20 +3579,16 @@ if (!is.null(obs) && nrow(obs)) {
       cat(sprintf("  P4HA1 sits at the %.0fth percentile, empirical p = %.3f. It is NOT\n",
                   a1$percentile, a1$emp_p_directional))
       cat("  unusual against this reference. The behaviour is largely generic and\n")
-      cat("  the model p is measuring the wrong null. Report this plainly and tell\n")
-      cat("  Valerio before doing anything else with the result.\n")
+      cat("  the model p is measuring the wrong null. Report this plainly.\n")
     }
   }
 }
 
 cat("\nWHAT THIS SETTLES AND WHAT IT DOES NOT\n")
 cat("  Does: whether the behaviour is specific to P4HA1 or common in this tissue.\n")
-cat("  Does: partly answers autocorrelation, since the reference shares it. It\n")
-cat("        does NOT fix the CIs, which stay too narrow for every gene here.\n")
-cat("  Not : matching is on detection rate only. The reference contains\n")
-cat("        fibroblast-specific and hypoxia-responsive genes that may behave the\n")
-cat("        same way for real reasons. That makes the test harder, not easier.\n")
-cat("  Not : mechanism. Still mRNA level, still associational.\n")
+cat("  Does not: fix the CIs, which stay too narrow for every gene here.\n")
+cat("  Matching is on detection rate only; the reference may contain fibroblast-\n")
+cat("  or hypoxia-responsive genes that behave the same way for real reasons.\n")
 cat(strrep("=", 74), "\n", sep = "")
 
 ## ============================================================================
@@ -3773,14 +3597,12 @@ cat(strrep("=", 74), "\n", sep = "")
 if (exists("FIG_STYLES") && exists("theme_fig")) {
   for (sn in names(FIG_STYLES)) {
     S <- FIG_STYLES[[sn]]
-    outdir <- file.path(agg, S$dir); dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
-    
     p8 <- ggplot(rnd_pooled, aes(est)) +
       geom_histogram(bins = 50, fill = "grey72", colour = "white", linewidth = 0.2) +
       geom_vline(xintercept = 0, linetype = "22", linewidth = S$lwd * 0.7, colour = "grey40") +
       labs(x = "Pooled slope difference (collagen minus ER stress, log odds per SD)",
            y = "Number of random genes",
-           caption = sprintf("%d genes matched to P4HA1 on detection rate, same model and pooling.%s",
+           caption = sprintf("%d genes matched to P4HA1 on detection rate, same model, sections and pooling.%s",
                              nrow(rnd_pooled),
                              if (RND_ADJUST_DEPTH) " Sequencing depth adjusted." else "")) +
       theme_fig(S)
@@ -3800,37 +3622,20 @@ if (exists("FIG_STYLES") && exists("theme_fig")) {
       p8 <- p8 + labs(title = "Is the behaviour specific to P4HA1?",
                       subtitle = "P4HA1 against a reference of detection-matched random genes")
     
-    w <- if (isTRUE(S$split)) S$w2 else S$w1 * 1.5
-    h <- if (isTRUE(S$split)) S$h_full else MM(66)
-    for (dv in S$devices) {
-      f <- file.path(outdir, outf("Figure8_random_gene_control", dv))
-      tryCatch({
-        if (dv == "pdf") ggsave(f, p8, width = w, height = h, device = PDF_DEV, bg = "white")
-        else             ggsave(f, p8, width = w, height = h, dpi = S$dpi, bg = "white")
-      }, error = function(e) log_msg("  fig failed (%s): %s", basename(f), conditionMessage(e)))
-    }
-    cat(sprintf("  %s written to %s\n", outf("Figure8_random_gene_control", "png"), S$dir))
+    save_fig(p8, S, sub("\\.csv$", "", outf("Figure8_random_gene_control")),
+             if (isTRUE(S$split)) S$w2 else S$w1 * 1.5,
+             if (isTRUE(S$split)) S$h_full else MM(66))
   }
 }
 
 log_msg("Section 16 complete.")
 
-
 ################################################################################
 ## 17. DEPTH ADJUSTED vs UNADJUSTED, AND RUN-TO-RUN REPRODUCIBILITY
-##
-##   BRCA NOTE: the reasoning in this header was written for the PDAC
-##   cohort. Any statement about what the data showed, which module worked,
-##   or how many tumours were usable describes PDAC, not BRCA. The code
-##   below is unchanged except where tagged "BRCA:".
-##
-##   v5 adds two guards this section did not have, both prompted by what went
-##   wrong: it verifies the two files really are different runs before comparing
-##   them, and it diffs the module fingerprints so a change in the numbers can
-##   be traced to scoring or to modelling rather than guessed at.
-##
-##   Run sections 13, 15, 16 once with ADJUST_DEPTH FALSE and once with TRUE,
-##   each in a FRESH session from section 0. Then run this.
+##     Run sections 13, 15, 16 once with ADJUST_DEPTH FALSE and once with
+##     TRUE, each in a FRESH session from section 0. Then run this. It
+##     verifies the two files are different runs before comparing them, and
+##     diffs the module fingerprints so a change can be traced.
 ################################################################################
 
 cat("\n", strrep("=", 74), "\n", sep = "")
@@ -3844,14 +3649,12 @@ cmp_read <- function(base) {
   a <- read.csv(f0, stringsAsFactors = FALSE)
   b <- read.csv(f1, stringsAsFactors = FALSE)
   
-  ## *** THE GUARD THAT WOULD HAVE CAUGHT THE LAST MISTAKE ***
   if ("adjust_depth" %in% names(a) && "adjust_depth" %in% names(b)) {
     if (isTRUE(all(a$adjust_depth == b$adjust_depth))) {
       cat(sprintf("\n  *** %s: BOTH files report adjust_depth = %s. These are not two\n",
                   base, unique(a$adjust_depth)[1]))
-      cat("  different runs. The _depthadj file was written by an unadjusted run,\n")
-      cat("  which is exactly the earlier fault. Re-run from a fresh session with\n")
-      cat("  ADJUST_DEPTH <- TRUE. Comparison skipped. ***\n")
+      cat("  different runs. Re-run from a fresh session with ADJUST_DEPTH <- TRUE.\n")
+      cat("  Comparison skipped. ***\n")
       return(NULL)
     }
     if ("run_id" %in% names(a) && identical(unique(a$run_id), unique(b$run_id))) {
@@ -3859,8 +3662,7 @@ cmp_read <- function(base) {
       return(NULL)
     }
   } else {
-    cat(sprintf("\n  NOTE: %s predates the provenance stamp, so the guard cannot\n", base))
-    cat("  verify these are different runs. Check the run manifests by hand.\n")
+    cat(sprintf("\n  NOTE: %s has no provenance stamp; check the run manifests by hand.\n", base))
   }
   list(unadj = a, adj = b)
 }
@@ -3901,10 +3703,8 @@ if (is.null(s)) {
   for (og in intersect(a0$outcome, a1$outcome)) {
     x <- a0[a0$outcome == og, ]; y <- a1[a1$outcome == og, ]
     cmp_line(og, x$est, x$lower, x$upper, x$p, y$est, y$lower, y$upper, y$p)
-    if (x$k != y$k) {
-      cat(sprintf("     NOTE: k changed from %d to %d. Depth adjustment costs a degree\n", x$k, y$k))
-      cat("     of freedom, so a borderline tumour can drop out. Say so if it happens.\n")
-    }
+    if (x$k != y$k)
+      cat(sprintf("     NOTE: k changed from %d to %d. Say so if it happens.\n", as.integer(x$k), as.integer(y$k)))
   }
 }
 
@@ -3923,11 +3723,7 @@ if (is.null(r)) {
   cat("\n  The percentile is the number to quote publicly.\n")
 }
 
-## ---- 17.4  MODULE FINGERPRINT DIFF   *** the diagnostic for fault 2 *** ----
-##   If the numbers moved between two runs, this says whether the module scores
-##   themselves changed. Identical fingerprints mean the cause is downstream in
-##   the model or the pooling. Different fingerprints mean it is upstream in
-##   scoring, and the module and tumour are named.
+## ---- 17.4  module fingerprint diff ----------------------------------------
 {
   f0 <- file.path(agg, "JOINT_module_fingerprint.csv")
   f1 <- file.path(agg, "JOINT_module_fingerprint_depthadj.csv")
@@ -3944,24 +3740,18 @@ if (is.null(r)) {
     changed <- m[abs(m$dmean) > 1e-9 | abs(m$dsd) > 1e-9 | m$dgenes != 0, ]
     cat("\n--- 17.4  did the module scores themselves change between runs? ---\n")
     if (!nrow(changed)) {
-      cat("  No. All module scores are numerically identical across the two runs.\n")
-      cat("  Any difference in results therefore comes from the model, not from\n")
-      cat("  scoring. Depth adjustment is expected to change the model, so this is\n")
-      cat("  the normal outcome.\n")
+      cat("  No. All module scores are identical across the two runs, so any\n")
+      cat("  difference in results comes from the model, not from scoring.\n")
     } else {
-      cat(sprintf("  YES: %d of %d module-by-tumour scores differ.\n", nrow(changed), nrow(m)))
-      cat("  Module scores should be identical between runs, since SEED is set\n")
-      cat("  before every AddModuleScore call. If they are not, something upstream\n")
-      cat("  changed: gene lists, Seurat version, or a contaminated session.\n")
-      cat("  Worst offenders:\n")
+      cat(sprintf("  YES: %d of %d module-by-section scores differ. Something upstream\n", nrow(changed), nrow(m)))
+      cat("  changed (gene lists, Seurat version, or a contaminated session).\n")
       changed <- changed[order(-abs(changed$dmean)), ]
       for (i in seq_len(min(10, nrow(changed)))) with(changed[i, ],
-                                                      cat(sprintf("     %-26s %-18s d_mean %+.6f  d_sd %+.6f  d_genes %+d\n",
-                                                                  sample_id, module, dmean, dsd, dgenes)))
+                                                      cat(sprintf("     %-30s %-18s d_mean %+.6f  d_sd %+.6f  d_genes %+d\n",
+                                                                  sample_id, module, dmean, dsd, as.integer(dgenes))))
     }
   } else {
-    cat("\n  17.4 unavailable: fingerprints exist only from v5 onward. Re-run\n")
-    cat("  sections 13 and 15 to generate them.\n")
+    cat("\n  17.4 unavailable: needs both fingerprint files from section 13.\n")
   }
 }
 
@@ -3977,120 +3767,47 @@ if (is.null(r)) {
                 sum(g0$p < 0.05, na.rm = TRUE), nrow(g0), 100*mean(g0$p < 0.05, na.rm = TRUE)))
     cat(sprintf("  adjusted   : %d of %d (%.1f%%)\n",
                 sum(g1$p < 0.05, na.rm = TRUE), nrow(g1), 100*mean(g1$p < 0.05, na.rm = TRUE)))
-    cat("  About 5% expected. Depth adjustment is NOT expected to fix this: the\n")
-    cat("  cause is spatial autocorrelation, not depth. If it stays high after\n")
-    cat("  adjustment, that confirms the diagnosis.\n")
+    cat("  About 5% expected. Depth adjustment is not expected to fix this; the\n")
+    cat("  cause is spatial autocorrelation.\n")
   }
 }
-
-cat("\n--- WHAT TO TELL VALERIO ---\n")
-cat("  Small shifts, no significance changes:\n")
-cat("     \"Adjusting for sequencing depth per spot moves the slope difference by\n")
-cat("     [shift]; the conclusion is unchanged.\" Objection closed in one line.\n")
-cat("  Large shift or a status change:\n")
-cat("     lead with it. Depth was carrying part of the signal and everything\n")
-cat("     downstream needs re-reading in that light.\n")
 cat(strrep("=", 74), "\n", sep = "")
 
 log_msg("Section 17 complete. run_id %s, ADJUST_DEPTH %s.", RUN_ID, ADJUST_DEPTH)
 
 ################################################################################
-## 18. THE METABOLIC AXIS: 2-OXOGLUTARATE SUPPLY INSTEAD OF HYPOXIA
+## 18. THE METABOLIC AXIS: 2-OXOGLUTARATE SUPPLY INSTEAD OF HYPOXIA  (Figure 9)
 ##
-##   BRCA NOTE: the reasoning in this header was written for the PDAC
-##   cohort. Any statement about what the data showed, which module worked,
-##   or how many tumours were usable describes PDAC, not BRCA. The code
-##   below is unchanged except where tagged "BRCA:".
-##                                     (Valerio, email after lab meeting 3, 2026)
+##   P4H consumes oxygen AND 2-oxoglutarate in the same reaction. Sections 13
+##   and 15 came in through the oxygen door; this section comes in through the
+##   cofactor door, with the same model and zMet in place of zHyp.
 ##
-## HIS REQUEST
-##   "Try to see it from another angle. TCA cycle, glutamine metabolism, because
-##   glutamine metabolism produces 2-oxoglutarate. Hypoxia is dirty."
+##   v5 (C1) -- WHAT CHANGED AND WHY
+##   * The colorectal-cancer survival signature (ASRGL1, MECP2, NOS2, NOS3)
+##     is GONE. It was selected in another cancer to predict survival, not to
+##     measure 2-oxoglutarate supply, so it had no meaning as a BRCA measure.
+##   * Every module here is a named standard gene set (or a subset of one,
+##     clearly labelled), and its detection in THIS cohort is printed at run
+##     time. No coverage figure from another cohort is quoted.
+##   * Each metabolic module is scored on its own. Before, a section that
+##     could not score one of them was removed from ALL of them.
+##   * The hypoxia-axis result (section 13) is re-pooled on exactly the same
+##     BRCA sections as the metabolic result before they are compared, and is
+##     drawn as the first panel of Figure 9.
 ##
-## THE LOGIC, IN ONE PARAGRAPH
-##   P4H consumes oxygen AND 2-oxoglutarate in the same reaction. Both are
-##   substrates, not accessories. So there are two independent doors into the
-##   same room: "enzyme present but unable to work". Sections 13 and 15 came in
-##   through the oxygen door. This section comes in through the cofactor door.
-##   If the decoupling is really about enzymatic capacity, it should be visible
-##   from both. If it only appears along the hypoxia axis, then hypoxia was
-##   doing something else and the mechanistic reading weakens.
+##   GENE SETS
+##   Glutamine  GOBP_GLUTAMINE_FAMILY_AMINO_ACID_METABOLIC_PROCESS (M11431,
+##              GO:0009064, 71 genes), verbatim. Primary.
+##   OGcore     12 enzymes that make or consume 2-oxoglutarate, a HAND-PICKED
+##              subset of the set above. Secondary.
+##   Weaknesses, to state before anyone asks: the GO term also covers the
+##   urea cycle, proline metabolism and NOS genes; and transcript abundance
+##   is a weak proxy for metabolite level. Section 19 tests whether the
+##   module's genes even move together in this tissue.
 ##
-## WHY A SECOND DOOR IS NEEDED AT ALL
-##   Hypoxia changes hundreds of genes at once. So "P4HA1 and ER stress rise
-##   together in hypoxic regions" always has the alternative reading that both
-##   are independent consequences of the same upheaval, with no relationship to
-##   collagen or to retention. No amount of further analysis along the hypoxia
-##   axis can settle that. A mechanistically distinct axis can.
-##
-## THE GENE SET
-##   GOBP_GLUTAMINE_FAMILY_AMINO_ACID_METABOLIC_PROCESS, MSigDB M11431,
-##   GO:0009064, human, release 2025.1.Hs. 71 genes.
-##
-##   This is the set the paper Valerio sent started from, NOT its four-gene
-##   signature. Two reasons:
-##     - the signature (ASRGL1, MECP2, NOS2, NOS3) was selected by LASSO to
-##       predict SURVIVAL in colorectal cancer, not to measure 2-oxoglutarate
-##       supply. The paper itself notes NOS2 is not directly part of glutamine
-##       metabolism.
-##     - ASRGL1 is not even in the current version of the source set. The paper
-##       used an older GO release with 76 genes; the current one has 71.
-##   The signature is still fitted below as a secondary, because he asked, but
-##   labelled for what it is.
-##
-## VERIFIED BEFORE WRITING THIS CODE
-##   Circularity : clean. No P4HA1, P4HA2, P4HA3, P4HB, PLOD1-3, PPIB.
-##   Overlap     : ZERO shared genes with Hypoxia, CollagenSynthesis, iCAF,
-##                 ERstressStrict, ERAD or CollagenMaturation. Nothing to strip,
-##                 unlike the VEGFA problem in section 11.
-##   PDAC ONLY, not checked for BRCA (the section prints the BRCA values):
-##   Coverage    : all 23 tumours clear the 30% threshold. Worst tumour has 37
-##                 of 71 detected, median 46. k will stay at 23.
-##   Core genes  : GLUL 0.886, GLS 0.441, GLUD1 0.364, OAT 0.353, GOT2 0.260,
-##                 CAD 0.238, GOT1 0.153 median detection. P4HA1 is 0.279 for
-##                 comparison, so the genes that matter are detected as well as
-##                 the outcome. Four of the seven highest-expressed members of
-##                 the whole set are core 2-oxoglutarate genes.
-##
-## THE HONEST WEAKNESS, STATE IT BEFORE ANYONE ASKS
-##   Two of them, and they point in the same direction.
-##
-##   (1) The GO term is broader than glutamine. Its own description says
-##       "arginine, glutamate, glutamine and proline". It carries the urea cycle
-##       (CPS1, OTC, ASS1, ASL), proline metabolism (PRODH, PYCR1-3, ALDH18A1),
-##       nitric oxide synthases and polyamine genes, none of which feed
-##       2-oxoglutarate to P4HA1. The module measures glutamine-family amino
-##       acid metabolism, not cofactor availability.
-##
-##   (2) Transcript abundance is a poor proxy for metabolite concentration.
-##       Metabolic flux is controlled largely after transcription: enzyme
-##       activity, substrate availability, allosteric regulation. None of that
-##       is visible here. This axis is therefore WEAKER as a measurement than
-##       hypoxia, where HIF drives transcription directly. Its value is in being
-##       INDEPENDENT, not in being sharper.
-##
-##   Because of (1) a focused 12-gene subset is fitted alongside. It is closer
-##   to the hypothesis but hand-selected, which is exactly the criticism the
-##   27-gene ER stress module attracts. Neither version is clean; running both
-##   and reporting both is the honest response.
-##
-## THE GATE THAT CAN STOP THIS SECTION
-##   HIF suppresses TCA flux, so the metabolic module may correlate with the
-##   hypoxia module. If it does so strongly, the two axes are not independent
-##   and the whole premise of a "second door" fails. 18.2 measures this FIRST
-##   and warns loudly. That is not a formality: a high correlation means the
-##   result must not be presented as independent confirmation.
-##
-## OUTPUT
-##   METAB_collinearity.csv        correlation with hypoxia, per tumour
-##   METAB_coefficients_pooled.csv
-##   METAB_slope_difference_pooled.csv    the headline, comparable to section 13
-##   METAB_slope_curves_pooled.csv
-##   Figure9_metabolic_axis
-##
-## PREREQUISITE
-##   Run after sections 11, 12 and the 12b helper block. Uses assert_run_state,
-##   pool_with_p, fmt_p, outf, write_out.
+##   THE GATE: if the metabolic module largely mirrors hypoxia, agreement
+##   between the two axes is one finding reported twice. 18.5 measures this
+##   before any result is shown.
 ################################################################################
 
 stopifnot(exists("MODULES"), exists("meta_pool"), exists("work"), exists("agg"))
@@ -4100,10 +3817,7 @@ if (!exists("pool_with_p") || !exists("fmt_p") || !exists("assert_run_state"))
 ## ============================================================================
 ## 18.0  GENE SETS AND SETTINGS
 ## ============================================================================
-
-## MSigDB M11431, GO:0009064, release 2025.1.Hs, transcribed verbatim from the
-## GENE_SYMBOLS field of the downloaded TSV. 71 genes. Do not edit by hand: the
-## defence of this module is that it is a named standard set, not a curated one.
+## MSigDB M11431, GO:0009064, release 2025.1.Hs, verbatim. Do not edit by hand.
 GLUTAMINE_GENES <- c(
   "GLYATL1B","MTHFS","FTCD","AZIN2","CLN3","NOXRED1","UROC1","CPS1",
   "AMDHD1","DAO","NAGS","FABP1","FAH","FOLH1B","SIRT4","FOLH1",
@@ -4115,40 +3829,27 @@ GLUTAMINE_GENES <- c(
   "PYCR1","ALDH18A1","PRODH2","PYCR3","TAT","UCP2","CAD","ALDH5A1",
   "AGMAT","DGLUCY","ATCAY","ALDH4A1","ARHGAP11B","GLYATL1","NR1H4")
 
-## Focused subset: enzymes that directly produce or consume 2-oxoglutarate, or
-## sit one step away on the glutamine to 2-OG route.
-##   GLS, GLS2    glutamine -> glutamate
-##   GLUD1, GLUD2 glutamate -> 2-oxoglutarate (oxidative deamination)
-##   GOT1, GOT2   glutamate <-> 2-oxoglutarate (transamination, cytosol / mito)
-##   GLUL         glutamate -> glutamine (the reverse direction, so it reports
-##                on the same node and is informative about which way flux runs)
-##   OAT          ornithine + 2-OG -> glutamate semialdehyde + glutamate
-##   ALDH5A1      succinate semialdehyde -> succinate, the GABA shunt exit
-##   ALDH4A1      glutamate semialdehyde -> glutamate
-##   CAD          consumes glutamine for pyrimidines, a competing sink
-##   PHGDH        serine synthesis, transaminates glutamate to 2-OG
-## HAND-SELECTED. That is the point of running it only as a secondary.
+## Enzymes that produce or consume 2-oxoglutarate, or sit one step away:
+##   GLS, GLS2 (glutamine -> glutamate); GLUD1, GLUD2 (glutamate -> 2-OG);
+##   GOT1, GOT2 (transamination); GLUL (reverse direction); OAT; ALDH5A1;
+##   ALDH4A1; CAD (competing glutamine sink); PHGDH (transaminates to 2-OG).
+## HAND-SELECTED, hence secondary only.
 OG_CORE_GENES <- c("GLS","GLS2","GLUD1","GLUD2","GOT1","GOT2","GLUL","OAT",
                    "ALDH5A1","ALDH4A1","CAD","PHGDH")
 
-## The paper's four-gene signature. Built to predict colorectal cancer survival,
-## not to measure cofactor supply. ASRGL1 is not in the current GO set at all.
-## Fitted because he asked; reported with that caveat attached.
-PAPER_SIGNATURE <- c("ASRGL1","MECP2","NOS2","NOS3")
+MODULES$Glutamine <- GLUTAMINE_GENES
+MODULES$OGcore    <- OG_CORE_GENES
+MODULES$PaperSig  <- NULL          # v5 (C1): removed, see header
 
-MODULES$Glutamine   <- GLUTAMINE_GENES
-MODULES$OGcore      <- OG_CORE_GENES
-MODULES$PaperSig    <- PAPER_SIGNATURE
-
-METAB_VARIANTS   <- c("Glutamine", "OGcore", "PaperSig")
-METAB_PRIMARY    <- "Glutamine"
-METAB_ES         <- "ERstressStrict"
-METAB_MIN_SPOTS  <- 30
-METAB_Z_GRID     <- seq(-2, 2, length.out = 41)
-METAB_ALPHA      <- 0.05
+METAB_VARIANTS     <- c("Glutamine", "OGcore")
+METAB_PRIMARY      <- "Glutamine"
+METAB_ES           <- "ERstressStrict"
+METAB_BASE_MODULES <- c("Hypoxia", "CollagenSynthesis", "iCAF", METAB_ES, "ERAD")
+METAB_MIN_SPOTS    <- 30
+METAB_Z_GRID       <- seq(-2, 2, length.out = 41)
+METAB_ALPHA        <- 0.05
 METAB_ADJUST_DEPTH <- ADJUST_DEPTH     # derived, never set by hand
 
-## correlation with hypoxia above which the two axes cannot be called independent
 METAB_COLLIN_WARN <- 0.50
 METAB_COLLIN_STOP <- 0.80
 
@@ -4160,6 +3861,10 @@ LAB_COL <- "Collagen synthesis"
 LAB_ER  <- "ER stress"
 LAB_DIF <- "difference"
 
+NICE_AXIS <- c(Hypoxia   = "Hypoxia axis (section 13)",
+               Glutamine = "Glutamine family (GO, 71 genes)",
+               OGcore    = "2-OG core (12 genes, hand-picked)")
+
 assert_run_state("Section 18")
 
 ## ============================================================================
@@ -4170,69 +3875,80 @@ cat("SECTION 18.1  GENE-SET AUDIT\n")
 cat(strrep("=", 74), "\n", sep = "")
 
 DANGER <- c("P4HA1","P4HA2","P4HA3","P4HB","PLOD1","PLOD2","PLOD3","PPIB")
-OTHER_PREDICTORS <- c("Hypoxia","CollagenSynthesis","iCAF","ERstressStrict","ERAD")
 
 metab_fail <- FALSE
 for (nm in METAB_VARIANTS) {
   g   <- MODULES[[nm]]
   bad <- intersect(DANGER, g)
-  cat(sprintf("\n  %s  (n = %d genes)\n", nm, length(g)))
+  cat(sprintf("\n  %s  (n = %d genes, need %d detected)\n", nm, length(g), min_genes_for(g)))
   cat(sprintf("    circularity : %s\n",
               if (length(bad)) paste0("*** FAIL: ", paste(bad, collapse = ", "), " ***") else "clean"))
   if (length(bad)) metab_fail <- TRUE
   ov_any <- FALSE
-  for (other in OTHER_PREDICTORS) {
+  for (other in METAB_BASE_MODULES) {
     ov <- intersect(g, MODULES[[other]])
     if (length(ov)) {
       cat(sprintf("    *** overlaps %s: %s ***\n", other, paste(ov, collapse = ", ")))
       ov_any <- TRUE; metab_fail <- TRUE
     }
   }
-  if (!ov_any) cat("    overlap with other predictor modules : none\n")
+  if (!ov_any) cat("    overlap with the predictor modules : none\n")
 }
 if (metab_fail)
   stop("Section 18 halted: a metabolic module is circular or overlaps another predictor.")
-cat("\n  Audit passed. Nothing to strip.\n")
+cat("\n  Audit passed.\n")
 
 ## ============================================================================
 ## 18.2  SCORE, STANDARDISE, AND MEASURE THE COLLINEARITY GATE
-##
-##   Everything is scored in ONE pass so all variants see identical predictors.
-##   The hypoxia module is scored too, not because it enters the model, but
-##   because the correlation between it and the metabolic module decides whether
-##   this analysis can be described as an independent axis at all.
+##       The base modules must all score (they are in every model). Each
+##       metabolic module is scored on its own and skipped on its own.
 ## ============================================================================
-METAB_SCORE_MODULES <- c("Hypoxia", "CollagenSynthesis", "iCAF", METAB_ES, "ERAD",
-                         METAB_VARIANTS)
-
 metab_expr_one <- function(rds_path, sid) {
   obj <- readRDS(rds_path)
   obj <- tryCatch(UpdateSeuratObject(obj), error = function(e) obj)
   DefaultAssay(obj) <- if ("SCT" %in% Assays(obj)) "SCT" else Assays(obj)[1]
   if (!"P4HA1" %in% rownames(obj)) return(NULL)
   
-  cov <- list()
-  for (nm in METAB_SCORE_MODULES) {
-    full <- MODULES[[nm]]
-    g    <- intersect(full, rownames(obj))
-    need <- min_genes_for(full)
-    cov[[nm]] <- data.frame(sample_id = sid, module = nm,
-                            n_total = length(full), n_found = length(g),
-                            n_required = need, row.names = NULL)
-    if (length(g) < need) {
-      log_msg("  %s: %s has %d/%d genes (need %d) -> sample skipped",
-              sid, nm, length(g), length(full), need)
-      return(NULL)
-    }
+  score_one <- function(obj, nm) {
     set.seed(SEED)
-    obj <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
-                                   assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
-                    error = function(e) NULL)
-    if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) return(NULL)
-    names(obj@meta.data)[names(obj@meta.data) == paste0(nm, "1")] <- nm
+    g <- intersect(MODULES[[nm]], rownames(obj))
+    o <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
+                                            assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
+                  error = function(e) NULL)
+    if (is.null(o) || !paste0(nm, "1") %in% colnames(o@meta.data)) return(NULL)
+    names(o@meta.data)[names(o@meta.data) == paste0(nm, "1")] <- nm
+    o
   }
   
-  vars <- c("P4HA1", METAB_SCORE_MODULES)
+  cov <- list()
+  for (nm in c(METAB_BASE_MODULES, METAB_VARIANTS)) {
+    full <- MODULES[[nm]]; g <- intersect(full, rownames(obj))
+    cov[[nm]] <- data.frame(sample_id = sid, module = nm, n_total = length(full),
+                            n_found = length(g), n_required = min_genes_for(full), row.names = NULL)
+  }
+  
+  for (nm in METAB_BASE_MODULES) {
+    if (cov[[nm]]$n_found < cov[[nm]]$n_required) {
+      log_msg("  %s: %s has %d/%d genes (need %d) -> section skipped",
+              sid, nm, cov[[nm]]$n_found, cov[[nm]]$n_total, cov[[nm]]$n_required)
+      return(NULL)
+    }
+    o <- score_one(obj, nm); if (is.null(o)) return(NULL); obj <- o
+  }
+  have <- character(0)
+  for (nm in METAB_VARIANTS) {
+    if (cov[[nm]]$n_found < cov[[nm]]$n_required) {
+      log_msg("  %s: %s has %d/%d genes (need %d) -> this module skipped here",
+              sid, nm, cov[[nm]]$n_found, cov[[nm]]$n_total, cov[[nm]]$n_required)
+      next
+    }
+    o <- score_one(obj, nm); if (is.null(o)) next
+    obj <- o; have <- c(have, nm)
+  }
+  if (!length(have)) return(NULL)
+  
+  scored <- c(METAB_BASE_MODULES, have)
+  vars <- c("P4HA1", scored)
   cnt_col <- grep("^nCount_", colnames(obj@meta.data), value = TRUE)
   if (METAB_ADJUST_DEPTH) {
     if (!length(cnt_col)) return(NULL)
@@ -4241,47 +3957,52 @@ metab_expr_one <- function(rds_path, sid) {
   d <- FetchData(obj, vars = vars, layer = "data")
   d$y <- as.integer(d$P4HA1 > 0)
   
-  ## collinearity, measured on the RAW scores before standardisation
-  cc <- suppressWarnings(cor(d[, METAB_SCORE_MODULES], method = "spearman"))
+  ## collinearity on the RAW scores, one row per metabolic module
+  cc <- suppressWarnings(cor(d[, scored], method = "spearman"))
   collin <- data.frame(
-    sample_id = sid,
-    Glutamine_vs_Hypoxia = cc["Glutamine", "Hypoxia"],
-    OGcore_vs_Hypoxia    = cc["OGcore", "Hypoxia"],
-    PaperSig_vs_Hypoxia  = cc["PaperSig", "Hypoxia"],
-    Glutamine_vs_OGcore  = cc["Glutamine", "OGcore"],
-    Glutamine_vs_Col     = cc["Glutamine", "CollagenSynthesis"],
-    Glutamine_vs_ER      = cc["Glutamine", METAB_ES],
+    sample_id      = sid,
+    variant        = have,
+    rho_vs_Hypoxia = unname(cc[have, "Hypoxia"]),
+    rho_vs_Col     = unname(cc[have, "CollagenSynthesis"]),
+    rho_vs_ER      = unname(cc[have, METAB_ES]),
+    rho_vs_primary = if (METAB_PRIMARY %in% have) unname(cc[have, METAB_PRIMARY]) else NA_real_,
     row.names = NULL)
   
   zz <- function(x) { s <- sd(x, na.rm = TRUE); if (!is.finite(s) || s == 0) return(NULL)
   as.numeric((x - mean(x, na.rm = TRUE)) / s) }
-  for (nm in METAB_SCORE_MODULES) {
+  for (nm in METAB_BASE_MODULES) {
     v <- zz(d[[nm]]); if (is.null(v)) return(NULL)
     d[[paste0("z", nm)]] <- v
   }
+  for (nm in have) {
+    v <- zz(d[[nm]])
+    if (is.null(v)) { have <- setdiff(have, nm); next }
+    d[[paste0("z", nm)]] <- v
+  }
+  if (!length(have)) return(NULL)
   if (METAB_ADJUST_DEPTH) {
     v <- zz(log1p(d[[cnt_col[1]]])); if (is.null(v)) return(NULL); d$zDepth <- v
   }
   
-  attr(d, "collin")   <- collin
+  attr(d, "have")     <- have
+  attr(d, "collin")   <- collin[collin$variant %in% have, , drop = FALSE]
   attr(d, "coverage") <- do.call(rbind, cov)
   d
 }
 
 ## ============================================================================
-## 18.3  FIT ONE TUMOUR, ONE METABOLIC VARIANT
-##       Same shape as sections 13 and 15, with zMet replacing zHyp as the axis.
+## 18.3  FIT ONE SECTION, ONE METABOLIC MODULE
+##       Same shape as sections 13 and 15, with zMet replacing zHyp.
 ## ============================================================================
 fit_metab_one <- function(d, sid, variant) {
   out <- list(coef = NULL, contrast = NULL, curve = NULL)
-  if (is.null(d) || nrow(d) < METAB_MIN_SPOTS || length(unique(d$y)) != 2) return(out)
+  if (is.null(d) || !variant %in% attr(d, "have")) return(out)
+  if (nrow(d) < METAB_MIN_SPOTS || length(unique(d$y)) != 2) return(out)
   
   dd <- d
-  dd$zMet <- d[[paste0("z", variant)]]
-  dd$zCol <- d$zCollagenSynthesis
-  dd$zER  <- d[[paste0("z", METAB_ES)]]
-  dd$ziCAF  <- d$ziCAF
-  dd$zERAD  <- d$zERAD
+  dd$zMet  <- d[[paste0("z", variant)]]
+  dd$zCol  <- d$zCollagenSynthesis
+  dd$zER   <- d[[paste0("z", METAB_ES)]]
   
   rhs <- paste0(MT_MET, " * ", MT_COL, " + ", MT_MET, " * ", MT_ER, " + ziCAF + zERAD",
                 if (METAB_ADJUST_DEPTH) " + zDepth" else "")
@@ -4290,8 +4011,6 @@ fit_metab_one <- function(d, sid, variant) {
   if (is.null(f) || !f$converged) return(out)
   
   b <- coef(f); V <- vcov(f)
-  
-  ## read the model, not the flag
   has_depth <- "zDepth" %in% names(b)
   if (!identical(has_depth, isTRUE(METAB_ADJUST_DEPTH)))
     stop(sprintf("Section 18, %s / %s: flag and fitted model disagree about zDepth.", sid, variant))
@@ -4334,7 +4053,7 @@ fit_metab_one <- function(d, sid, variant) {
 ## ============================================================================
 ## 18.4  RUN THE COHORT
 ## ============================================================================
-log_msg("Section 18 start. Variants: %s. ADJUST_DEPTH = %s.",
+log_msg("Section 18 start. Modules: %s. ADJUST_DEPTH = %s.",
         paste(METAB_VARIANTS, collapse = ", "), METAB_ADJUST_DEPTH)
 
 metab_acc <- list(coef = list(), contrast = list(), curve = list(),
@@ -4346,10 +4065,8 @@ for (i in seq_len(nrow(work))) {
   d <- tryCatch(metab_expr_one(path, sid),
                 error = function(e) { log_msg("  metab skipped: %s", conditionMessage(e)); NULL })
   if (is.null(d)) next
-  if (!is.null(attr(d, "collin")))
-    metab_acc$collin[[length(metab_acc$collin) + 1]] <- attr(d, "collin")
-  if (!is.null(attr(d, "coverage")))
-    metab_acc$coverage[[length(metab_acc$coverage) + 1]] <- attr(d, "coverage")
+  metab_acc$collin[[length(metab_acc$collin) + 1]]     <- attr(d, "collin")
+  metab_acc$coverage[[length(metab_acc$coverage) + 1]] <- attr(d, "coverage")
   for (vr in METAB_VARIANTS) {
     r <- fit_metab_one(d, sid, vr)
     for (k in c("coef", "contrast", "curve"))
@@ -4363,7 +4080,7 @@ mcur  <- bind(metab_acc$curve)
 mcol  <- bind(metab_acc$collin)
 mcov  <- bind(metab_acc$coverage)
 
-if (nrow(mcon) == 0) stop("Section 18: no tumour produced a usable fit.")
+if (nrow(mcon) == 0) stop("Section 18: no section produced a usable fit.")
 
 write_out(mcoef, "METAB_coefficients_per_sample")
 write_out(mcon,  "METAB_contrasts_per_sample")
@@ -4372,59 +4089,53 @@ write_out(mcov,  "METAB_gene_coverage")
 
 ## ============================================================================
 ## 18.5  THE COLLINEARITY GATE, reported before any result
-##
-##   This has to come before the headline. If the metabolic module is largely a
-##   restatement of hypoxia, then a matching result is not independent
-##   confirmation, it is the same finding twice, and presenting it as
-##   corroboration would be wrong.
 ## ============================================================================
 cat("\n", strrep("=", 74), "\n", sep = "")
 cat("SECTION 18.5  IS THIS REALLY A SECOND, INDEPENDENT AXIS?\n")
 cat(strrep("=", 74), "\n", sep = "")
-cat("  Spearman correlation with the hypoxia module, per tumour:\n\n")
+cat(sprintf("  Spearman correlation with the hypoxia module (median over %ss):\n\n", UNIT_LABEL))
 
 gate_verdict <- list()
 for (vr in METAB_VARIANTS) {
-  cc <- mcol[[paste0(vr, "_vs_Hypoxia")]]
-  med <- median(cc, na.rm = TRUE); mx <- max(abs(cc), na.rm = TRUE)
+  cv <- mcol[mcol$variant == vr, ]
+  if (!nrow(cv)) { gate_verdict[[vr]] <- "not scored"; next }
+  med <- unit_median(cv$rho_vs_Hypoxia, cv$sample_id)
   status <- if (abs(med) >= METAB_COLLIN_STOP) "TOO HIGH"
   else if (abs(med) >= METAB_COLLIN_WARN) "HIGH"
   else "acceptable"
   gate_verdict[[vr]] <- status
-  cat(sprintf("    %-10s median %+.2f   range %+.2f to %+.2f   max |rho| %.2f   -> %s\n",
-              vr, med, min(cc, na.rm = TRUE), max(cc, na.rm = TRUE), mx, status))
+  cat(sprintf("    %-10s median %+.2f   range %+.2f to %+.2f   -> %s\n",
+              vr, med, min(cv$rho_vs_Hypoxia, na.rm = TRUE), max(cv$rho_vs_Hypoxia, na.rm = TRUE), status))
 }
 cat(sprintf("\n  thresholds: |rho| >= %.2f is HIGH, >= %.2f is TOO HIGH\n",
             METAB_COLLIN_WARN, METAB_COLLIN_STOP))
-cat("\n  HOW TO READ THIS\n")
-cat("    acceptable : the two axes are largely separate. A matching result on\n")
-cat("                 both is genuine independent support.\n")
-cat("    HIGH       : the axes share substantial variance. A matching result is\n")
-cat("                 weaker evidence than it looks. Say so explicitly.\n")
+cat("    acceptable : the axes are largely separate; agreement is independent support.\n")
+cat("    HIGH       : substantial shared variance; agreement is weaker than it looks.\n")
 cat("    TOO HIGH   : the metabolic module is largely hypoxia in another form.\n")
-cat("                 Do NOT present agreement as corroboration; it is one\n")
-cat("                 finding reported twice.\n")
 
 if (identical(gate_verdict[[METAB_PRIMARY]], "TOO HIGH")) {
   cat("\n  *** The PRIMARY module fails the gate. Everything below is still\n")
-  cat("  computed, but it cannot be described as an independent axis. Tell\n")
-  cat("  Valerio this before showing the numbers. ***\n")
+  cat("  computed, but it cannot be described as an independent axis. ***\n")
 }
 
-cat("\n  other correlations of the primary module (median across tumours):\n")
-cat(sprintf("    vs the 12-gene core subset : %+.2f\n", median(mcol$Glutamine_vs_OGcore, na.rm = TRUE)))
-cat(sprintf("    vs collagen synthesis      : %+.2f\n", median(mcol$Glutamine_vs_Col, na.rm = TRUE)))
-cat(sprintf("    vs ER stress               : %+.2f\n", median(mcol$Glutamine_vs_ER, na.rm = TRUE)))
-cat("  If the 71-gene and 12-gene versions correlate highly, the broad set is\n")
-cat("  effectively being carried by its core members, which is reassuring.\n")
+pc <- mcol[mcol$variant == METAB_PRIMARY, ]
+if (nrow(pc)) {
+  cat("\n  other correlations of the primary module (median):\n")
+  oc <- mcol[mcol$variant == "OGcore", ]
+  if (nrow(oc)) cat(sprintf("    vs the 12-gene core subset : %+.2f\n", unit_median(oc$rho_vs_primary, oc$sample_id)))
+  cat(sprintf("    vs collagen synthesis      : %+.2f\n", unit_median(pc$rho_vs_Col, pc$sample_id)))
+  cat(sprintf("    vs ER stress               : %+.2f\n", unit_median(pc$rho_vs_ER, pc$sample_id)))
+}
 
-cat("\n  gene coverage per module (median across tumours):\n")
+cat("\n  gene coverage per module in THIS cohort (across sections):\n")
 cs <- mcov %>% group_by(module) %>%
   summarise(median_found = median(n_found), total = max(n_total),
-            min_found = min(n_found), required = max(n_required), .groups = "drop")
+            min_found = min(n_found), required = max(n_required),
+            n_below = sum(n_found < n_required), n = dplyr::n(), .groups = "drop")
+## v5 (C5): %d on a median crashed with an even number of sections
 for (i in seq_len(nrow(cs))) with(cs[i, ],
-                                  cat(sprintf("    %-20s %3d / %3d detected (min %3d, need %3d)\n",
-                                              module, median_found, total, min_found, required)))
+                                  cat(sprintf("    %-20s %5.1f / %3.0f detected (min %3.0f, need %3.0f)  below threshold in %d of %d sections\n",
+                                              module, median_found, total, min_found, required, as.integer(n_below), as.integer(n))))
 
 ## ============================================================================
 ## 18.6  POOL AND REPORT
@@ -4444,6 +4155,31 @@ mcur_pooled <- mcur %>%
   arrange(variant, series, z)
 write_out(mcur_pooled, "METAB_slope_curves_pooled")
 
+## ---- the hypoxia axis on EXACTLY the same sections -------------------------
+## v5 (C1): the two axes are compared on one set of BRCA sections. Sections
+## fitted on only one axis are named, not silently mixed in.
+prim_secs <- unique(mcon$sample_id[mcon$variant == METAB_PRIMARY & mcon$contrast == "interaction_diff"])
+hyp_ref <- NULL; hyp_curve <- NULL; hyp_note <- NULL
+if (exists("jcon_all") && exists("jcur_all")) {
+  only_met <- setdiff(prim_secs, jcon_all$sample_id)
+  only_hyp <- setdiff(unique(jcon_all$sample_id), prim_secs)
+  common   <- intersect(prim_secs, jcon_all$sample_id)
+  if (length(common)) {
+    jc <- jcon_all[jcon_all$contrast == "interaction_diff" & jcon_all$sample_id %in% common, ]
+    hyp_ref <- pool_with_p(jc$est, jc$var, jc$sample_id)
+    hyp_curve <- jcur_all[jcur_all$sample_id %in% common, ] %>%
+      group_by(series, z) %>% group_modify(~ pool_with_p(.x$est, .x$var, .x$sample_id)) %>% ungroup() %>%
+      mutate(OR = exp(est), lower_OR = exp(lower), upper_OR = exp(upper), variant = "Hypoxia")
+    ## the metabolic result on the same common sections, for the side by side
+    mc <- mcon[mcon$variant == METAB_PRIMARY & mcon$contrast == "interaction_diff" & mcon$sample_id %in% common, ]
+    met_common <- pool_with_p(mc$est, mc$var, mc$sample_id)
+  }
+  hyp_note <- sprintf("common sections %d; only on the metabolic axis %d; only on the hypoxia axis %d",
+                      length(common), length(only_met), length(only_hyp))
+} else {
+  hyp_note <- "section 13 is not in this session; no like-for-like comparison is possible"
+}
+
 cat("\n", strrep("=", 74), "\n", sep = "")
 cat(sprintf("SECTION 18  THE METABOLIC AXIS  [%s]\n",
             if (METAB_ADJUST_DEPTH) "DEPTH ADJUSTED" else "UNADJUSTED"))
@@ -4451,18 +4187,17 @@ cat(strrep("=", 74), "\n", sep = "")
 cat(sprintf("Model : y ~ %s\n",
             paste0(MT_MET, "*", MT_COL, " + ", MT_MET, "*", MT_ER, " + ziCAF + zERAD",
                    if (METAB_ADJUST_DEPTH) " + zDepth" else "")))
-cat("zMet replaces zHyp as the axis. Everything else is identical to section 13,\n")
-cat("so the headline number is directly comparable to it.\n")
+cat("zMet replaces zHyp as the axis. Everything else is identical to section 13.\n")
 
 cat("\n--- the two interaction terms ---\n")
 cat(sprintf("  %-12s %-14s %9s %21s %5s %6s %11s\n",
-            "variant", "term", "beta", "95% CI", "k", "I2", "p"))
+            "module", "term", "beta", "95% CI", "k", "I2", "p"))
 for (vr in METAB_VARIANTS) {
   for (tm in c(MI_COL, MI_ER)) {
     r <- mcoef_pooled[mcoef_pooled$variant == vr & mcoef_pooled$term == tm, ]
     if (!nrow(r)) next
     cat(sprintf("  %-12s %-14s %+9.4f  %+8.4f to %+8.4f %5d %5.0f%% %10s\n",
-                vr, tm, r$est, r$lower, r$upper, r$k, r$I2, fmt_p(r$p)))
+                vr, tm, r$est, r$lower, r$upper, as.integer(r$k), r$I2, fmt_p(r$p)))
   }
 }
 
@@ -4470,125 +4205,97 @@ cat("\n--- THE HEADLINE: difference between the two slopes, along the metabolic 
 for (vr in METAB_VARIANTS) {
   r <- mcon_pooled[mcon_pooled$variant == vr & mcon_pooled$contrast == "interaction_diff", ]
   if (!nrow(r)) next
-  cat(sprintf("  %-12s %+.4f  (95%% CI %+.4f to %+.4f)  k=%2d  I2=%3.0f%%  p = %-10s %s\n",
-              vr, r$est, r$lower, r$upper, r$k, r$I2, fmt_p(r$p),
+  cat(sprintf("  %-12s %+.4f  (95%% CI %+.4f to %+.4f)  %s  I2=%3.0f%%  p = %-10s %s\n",
+              vr, r$est, r$lower, r$upper, k_lab(r), r$I2, fmt_p(r$p),
               if (is.finite(r$p) && r$p < METAB_ALPHA) "SIGNIFICANT" else "not significant"))
 }
 
-## ---- compare directly against the hypoxia axis ----------------------------
-hyp_ref <- NULL
-hf <- file.path(agg, outf("JOINT_slope_difference_pooled"))
-if (file.exists(hf)) {
-  h <- read.csv(hf, stringsAsFactors = FALSE)
-  hyp_ref <- h[h$contrast == "interaction_diff", ]
-}
-
-cat("\n--- SIDE BY SIDE WITH THE HYPOXIA AXIS ---\n")
-if (!is.null(hyp_ref) && nrow(hyp_ref) == 1) {
-  cat(sprintf("  hypoxia axis (section 13) : %+.4f  p = %s\n", hyp_ref$est, fmt_p(hyp_ref$p)))
-  pr <- mcon_pooled[mcon_pooled$variant == METAB_PRIMARY &
-                      mcon_pooled$contrast == "interaction_diff", ]
-  if (nrow(pr) == 1) {
-    cat(sprintf("  metabolic axis (primary)  : %+.4f  p = %s\n", pr$est, fmt_p(pr$p)))
-    same_sign <- sign(pr$est) == sign(hyp_ref$est)
-    sig_met   <- is.finite(pr$p) && pr$p < METAB_ALPHA
-    cat("\n  VERDICT\n")
-    if (sig_met && same_sign) {
-      cat("    The same decoupling appears along BOTH axes, in the same direction.\n")
-      cat("    That is the result Valerio was hoping for: two mechanistically\n")
-      cat("    distinct routes to the same state give the same answer, so the\n")
-      cat("    \"it is just a side effect of hypoxia\" reading is much harder to hold.\n")
-      cat(sprintf("    Strength of this claim depends on the gate above: %s.\n",
-                  gate_verdict[[METAB_PRIMARY]]))
-    } else if (sig_met && !same_sign) {
-      cat("    *** The metabolic axis is significant but in the OPPOSITE direction.\n")
-      cat("    That is not corroboration and it is not a clean negative either.\n")
-      cat("    It needs explaining before anything is claimed. Report it as it is. ***\n")
-    } else {
-      cat("    The decoupling does NOT appear along the metabolic axis.\n")
-      cat("    Two honest readings, and the data here cannot separate them:\n")
-      cat("      (a) the phenomenon is specific to oxygen limitation, not to\n")
-      cat("          enzymatic capacity in general; or\n")
-      cat("      (b) transcript levels of metabolic genes are simply too poor a\n")
-      cat("          proxy for 2-oxoglutarate availability to detect it.\n")
-      cat("    Reading (b) is quite likely given how far transcript is from flux.\n")
-      cat("    Do NOT present this as evidence against the mechanism.\n")
-    }
+cat("\n--- SIDE BY SIDE WITH THE HYPOXIA AXIS, SAME BRCA SECTIONS ---\n")
+cat(sprintf("  %s\n", hyp_note))
+if (!is.null(hyp_ref) && is.finite(hyp_ref$est)) {
+  cat(sprintf("  hypoxia axis   : %+.4f (%+.4f to %+.4f)  p = %s  %s\n",
+              hyp_ref$est, hyp_ref$lower, hyp_ref$upper, fmt_p(hyp_ref$p), k_lab(hyp_ref)))
+  cat(sprintf("  metabolic axis : %+.4f (%+.4f to %+.4f)  p = %s  %s\n",
+              met_common$est, met_common$lower, met_common$upper, fmt_p(met_common$p), k_lab(met_common)))
+  same_sign <- sign(met_common$est) == sign(hyp_ref$est)
+  sig_met   <- is.finite(met_common$p) && met_common$p < METAB_ALPHA
+  sig_hyp   <- is.finite(hyp_ref$p) && hyp_ref$p < METAB_ALPHA
+  cat("\n  VERDICT\n")
+  if (!sig_hyp) {
+    cat("    The hypoxia axis itself shows no significant slope difference on these\n")
+    cat("    sections, so there is nothing for the metabolic axis to corroborate.\n")
+  } else if (sig_met && same_sign) {
+    cat("    The same decoupling appears along BOTH axes, in the same direction.\n")
+    cat(sprintf("    How much that counts depends on the gate above: %s.\n",
+                gate_verdict[[METAB_PRIMARY]]))
+  } else if (sig_met && !same_sign) {
+    cat("    *** The metabolic axis is significant but in the OPPOSITE direction.\n")
+    cat("    That is neither corroboration nor a clean negative. Report it as it is. ***\n")
+  } else {
+    cat("    The decoupling does NOT appear along the metabolic axis. Either it is\n")
+    cat("    specific to oxygen limitation, or the transcript-level module is too\n")
+    cat("    poor a proxy for 2-oxoglutarate to detect it (section 19 tests the\n")
+    cat("    module's coherence). Do NOT present this as evidence against the mechanism.\n")
   }
-} else {
-  cat("  Section 13 output not found, so no direct comparison. Run section 13 first.\n")
 }
 
-## ---- primary vs the hand-selected subset ----------------------------------
 cat("\n--- broad set vs focused subset ---\n")
 {
   a <- mcon_pooled[mcon_pooled$variant == "Glutamine" & mcon_pooled$contrast == "interaction_diff", ]
   b <- mcon_pooled[mcon_pooled$variant == "OGcore"    & mcon_pooled$contrast == "interaction_diff", ]
   if (nrow(a) == 1 && nrow(b) == 1) {
-    cat(sprintf("  71-gene GOBP set : %+.4f  p = %s\n", a$est, fmt_p(a$p)))
-    cat(sprintf("  12-gene 2-OG core: %+.4f  p = %s\n", b$est, fmt_p(b$p)))
-    cat("  If the focused subset gives a stronger effect, that is consistent with\n")
-    cat("  the signal coming from 2-oxoglutarate metabolism specifically rather\n")
-    cat("  than from glutamine-family metabolism generally. It is suggestive, not\n")
-    cat("  a test: the subset was chosen by hand, which is the same criticism the\n")
-    cat("  27-gene ER stress module attracts. Report the GOBP set as primary.\n")
-  }
-}
-
-cat("\n--- the paper's four-gene signature ---\n")
-{
-  s <- mcon_pooled[mcon_pooled$variant == "PaperSig" & mcon_pooled$contrast == "interaction_diff", ]
-  if (nrow(s) == 1) {
-    cat(sprintf("  %+.4f  (95%% CI %+.4f to %+.4f)  p = %s\n", s$est, s$lower, s$upper, fmt_p(s$p)))
-    cat("  Fitted because Valerio asked. State plainly what it is: a signature\n")
-    cat("  selected by LASSO to predict SURVIVAL in colorectal cancer, not to\n")
-    cat("  measure 2-oxoglutarate supply. The source paper itself notes NOS2 is\n")
-    cat("  not directly part of glutamine metabolism, and ASRGL1 is no longer in\n")
-    cat("  the current version of the GO set the paper started from. Whatever\n")
-    cat("  this number is, it is not a cofactor measurement.\n")
+    cat(sprintf("  71-gene GOBP set : %+.4f  p = %s  %s\n", a$est, fmt_p(a$p), k_lab(a)))
+    cat(sprintf("  12-gene 2-OG core: %+.4f  p = %s  %s\n", b$est, fmt_p(b$p), k_lab(b)))
+    cat("  The subset was chosen by hand, so it is suggestive only. Report the\n")
+    cat("  GOBP set as primary.\n")
   }
 }
 
 cat("\nCAVEATS TO STATE BEFORE ANYONE ASKS\n")
 cat("  1. The GO term covers arginine, glutamate, glutamine AND proline, so it\n")
-cat("     includes the urea cycle, proline metabolism and NOS genes that have\n")
-cat("     nothing to do with feeding 2-oxoglutarate to P4HA1.\n")
+cat("     includes urea-cycle, proline and NOS genes that do not feed 2-OG.\n")
 cat("  2. Transcript abundance is a weak proxy for metabolite concentration.\n")
-cat("     Flux is controlled mostly after transcription. This axis is weaker as\n")
-cat("     a MEASUREMENT than hypoxia; its value is that it is INDEPENDENT.\n")
 cat("  3. Spatial autocorrelation not modelled, so all CIs are too narrow.\n")
-cat("  4. Per 1 SD within tumour, not comparable to sections 10 and 11.\n")
-cat("  5. mRNA level and associational. Says nothing about actual 2-OG levels.\n")
+cat("  4. Per 1 SD within section, not comparable to sections 10 and 11.\n")
 cat(strrep("=", 74), "\n", sep = "")
 
 ## ============================================================================
 ## 18.7  FIGURE 9
+##       Panel 1: the hypoxia axis (section 13), re-pooled on the SAME BRCA
+##       sections. Panels 2 and 3: the two metabolic modules. One cancer, one
+##       set of sections, one model.
 ## ============================================================================
 if (!exists("FIG_STYLES") || !exists("theme_fig")) {
   cat("\n  Figure 9 skipped: section 12 has not run.\n")
 } else {
-  nice_v <- c(Glutamine = "Glutamine family (71 genes)",
-              OGcore    = "2-OG core (12 genes)",
-              PaperSig  = "Paper signature (4 genes)")
-  ld <- mcur_pooled[mcur_pooled$series != LAB_DIF, ]
+  ld <- mcur_pooled[mcur_pooled$series != LAB_DIF, c("variant", "series", "z", "OR", "lower_OR", "upper_OR")]
+  if (!is.null(hyp_curve))
+    ld <- rbind(as.data.frame(hyp_curve[hyp_curve$series != LAB_DIF,
+                                        c("variant", "series", "z", "OR", "lower_OR", "upper_OR")]),
+                as.data.frame(ld))
+  ld <- ld[ld$variant %in% names(NICE_AXIS), ]
+  lv <- unname(NICE_AXIS[intersect(names(NICE_AXIS), unique(ld$variant))])
   ld$series  <- factor(ld$series, c(LAB_COL, LAB_ER))
-  ld$variant <- factor(nice_v[ld$variant], levels = unname(nice_v))
+  ld$variant <- factor(unname(NICE_AXIS[ld$variant]), levels = lv)
   
-  lab_df <- do.call(rbind, lapply(METAB_VARIANTS, function(vr) {
+  lab_rows <- list()
+  if (!is.null(hyp_ref) && is.finite(hyp_ref$est))
+    lab_rows[["Hypoxia"]] <- data.frame(variant = NICE_AXIS[["Hypoxia"]],
+                                        lab = sprintf("diff %+.3f, p = %s\n%s", hyp_ref$est, fmt_p(hyp_ref$p), k_lab(hyp_ref)))
+  for (vr in METAB_VARIANTS) {
     r <- mcon_pooled[mcon_pooled$variant == vr & mcon_pooled$contrast == "interaction_diff", ]
-    if (!nrow(r)) return(NULL)
-    data.frame(variant = factor(nice_v[[vr]], levels = unname(nice_v)),
-               lab = sprintf("diff %+.3f, p = %s\nk = %d", r$est, fmt_p(r$p), r$k),
-               row.names = NULL)
-  }))
+    if (nrow(r)) lab_rows[[vr]] <- data.frame(variant = NICE_AXIS[[vr]],
+                                              lab = sprintf("diff %+.3f, p = %s\n%s", r$est, fmt_p(r$p), k_lab(r)))
+  }
+  lab_df <- do.call(rbind, lab_rows)
+  if (!is.null(lab_df)) lab_df$variant <- factor(lab_df$variant, levels = lv)
   
   y_top <- max(ld$upper_OR, na.rm = TRUE); y_bot <- min(ld$lower_OR, na.rm = TRUE)
   y_hi  <- y_top * (y_top / y_bot)^0.28
+  med_rho <- if (nrow(pc)) unit_median(pc$rho_vs_Hypoxia, pc$sample_id) else NA_real_
   
   for (sn in names(FIG_STYLES)) {
     S <- FIG_STYLES[[sn]]
-    outdir <- file.path(agg, S$dir); dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
-    
     p9 <- ggplot(ld, aes(z, OR)) +
       geom_hline(yintercept = 1, linetype = "22", linewidth = S$lwd * 0.7, colour = "grey40") +
       geom_ribbon(aes(ymin = lower_OR, ymax = upper_OR, fill = series), alpha = .16, colour = NA) +
@@ -4597,10 +4304,12 @@ if (!exists("FIG_STYLES") || !exists("theme_fig")) {
       scale_fill_manual(values   = setNames(c(CLR$neg, CLR$pos), c(LAB_COL, LAB_ER)), name = NULL) +
       facet_wrap(~ variant, nrow = 1) + scale_y_log10() +
       coord_cartesian(ylim = c(y_bot, y_hi)) +
-      labs(x = "Metabolic module score (SD within tumour)",
+      labs(x = "Axis module score (SD within section)",
            y = "Odds ratio for P4HA1 detection (95% CI)",
-           caption = sprintf("Same model as section 13 with the metabolic module replacing hypoxia as the axis. Median correlation with hypoxia: %+.2f.",
-                             median(mcol$Glutamine_vs_Hypoxia, na.rm = TRUE))) +
+           caption = sprintf(paste0("BRCA only. Same model in every panel; only the axis module differs.\n",
+                                    "Hypoxia panel re-pooled on the sections of the glutamine panel.\n",
+                                    "Median correlation of the glutamine module with hypoxia: %+.2f."),
+                             med_rho)) +
       theme_fig(S) + theme(legend.position = "top")
     
     if (!is.null(lab_df) && nrow(lab_df))
@@ -4612,101 +4321,32 @@ if (!exists("FIG_STYLES") || !exists("theme_fig")) {
       p9 <- p9 + labs(title = "Does the same decoupling appear along the cofactor axis?",
                       subtitle = "2-oxoglutarate is a substrate of P4H alongside oxygen")
     
-    h <- if (isTRUE(S$split)) S$h_full else MM(72)
-    for (dv in S$devices) {
-      f <- file.path(outdir, outf("Figure9_metabolic_axis", dv))
-      tryCatch({
-        if (dv == "pdf") ggsave(f, p9, width = S$w2, height = h, device = PDF_DEV, bg = "white")
-        else             ggsave(f, p9, width = S$w2, height = h, dpi = S$dpi, bg = "white")
-      }, error = function(e) log_msg("  fig failed (%s): %s", basename(f), conditionMessage(e)))
-    }
-    cat(sprintf("  %s written to %s\n", outf("Figure9_metabolic_axis", "png"), S$dir))
+    save_fig(p9, S, sub("\\.csv$", "", outf("Figure9_metabolic_axis")),
+             S$w2, if (isTRUE(S$split)) S$h_full else MM(72))
   }
 }
 
 log_msg("Section 18 complete.")
 
 ################################################################################
-## 19. IS THE METABOLIC MODULE INTERNALLY COHERENT?
+## 19. IS EACH MODULE INTERNALLY COHERENT?   (Figure 10)
 ##
-##   BRCA NOTE: the reasoning in this header was written for the PDAC
-##   cohort. Any statement about what the data showed, which module worked,
-##   or how many tumours were usable describes PDAC, not BRCA. The code
-##   below is unchanged except where tagged "BRCA:".
+##   A module score is a mean over member genes. It only means something if
+##   the members move together. This asks a question about the module alone,
+##   so it needs no external yardstick (AddModuleScore already subtracts the
+##   generic activity such yardsticks measure).
 ##
-##     REPLACES the earlier section 19. Delete that one; this supersedes it.
+##   Two measures: mean pairwise Spearman between member genes, and the share
+##   of variance taken by PC1. Visium is sparse, so absolute values are close
+##   to meaningless; each module is compared with 30 random gene sets of the
+##   same size matched on detection rate, and reported as a PERCENTILE.
 ##
-## WHY THE FIRST ATTEMPT FAILED, AND WHY IT WAS MY DESIGN ERROR
-##   The first version compared each module score against external yardsticks:
-##   an OXPHOS module, mitochondrial read fraction, genes detected per spot,
-##   ribosomal read fraction. The hypoxia module was the positive control.
+##   Reference modules are tested alongside, so "coherent" can be judged
+##   against modules that are expected to work in THIS cohort. Whether they do
+##   is read from this run, not assumed.
 ##
-##   In PDAC, hypoxia failed all four (best median rho +0.083, threshold 0.15). Since we
-##   know the hypoxia module works, the yardsticks were the problem, and the
-##   section said nothing about glutamine.
-##
-##   The reason is now obvious in hindsight. AddModuleScore computes a score
-##   RELATIVE TO CONTROL GENES matched on expression level. It is built to
-##   remove exactly the generic effects those yardsticks measure: depth, overall
-##   cellular activity, gene count. Three of my four yardsticks were generic
-##   activity measures, so the scoring method had already subtracted the thing I
-##   was trying to correlate against. The test could not have worked.
-##
-## WHAT THIS VERSION ASKS INSTEAD
-##   Not "does the module track something external", but "do the genes inside
-##   the module behave as a unit at all".
-##
-##   A module score is a mean over member genes. That mean only means something
-##   if the members move together. If GLS, OTC, NOS3 and PRODH vary
-##   independently across spots, averaging them produces a number that
-##   represents no coherent biological quantity, and any null result from it is
-##   uninterpretable.
-##
-##   This asks a question about the module alone. It needs no external yardstick
-##   and is therefore immune to the failure above.
-##
-## TWO MEASURES OF COHERENCE
-##   1. Mean pairwise correlation between member genes across spots.
-##      Direct and easy to explain.
-##   2. Variance explained by the first principal component of the member genes.
-##      If members move as one, PC1 captures most of the variance. This is less
-##      sensitive to the tie problem below.
-##
-## THE PROBLEM WITH BOTH, AND HOW IT IS HANDLED
-##   Visium is sparse. Most gene pairs share a large number of double zeros,
-##   which inflates ties and drags correlations toward a value that reflects
-##   dropout rather than biology. So an absolute coherence number is close to
-##   meaningless: is 0.05 low? Compared to what?
-##
-##   The answer is a null. For every real module, RANDOM gene sets of the same
-##   size, matched on detection rate, are scored the same way. The module is
-##   then reported as a PERCENTILE against its own null. That absorbs the
-##   dropout problem, exactly as section 16 absorbed spatial autocorrelation.
-##
-## THE CONTROLS
-##   Several known modules are tested alongside, not just glutamine:
-##     Hypoxia            positive control, known to work in this data
-##     CollagenSynthesis  a tight, obviously co-regulated set
-##     ERstressStrict     the other module carrying a real result
-##     ERAD               a large set that produced a near-null
-##   Testing several shows what coherence looks like across modules that work,
-##   which is the only way to judge whether glutamine is unusual.
-##
-## HOW TO READ THE OUTCOME
-##   Hypoxia coherent, glutamine not  -> the module is not a unit. Section 18's
-##                                       null is about the instrument. This is
-##                                       the expected outcome.
-##   Both coherent                    -> glutamine is a real module and its null
-##                                       cannot be dismissed. Harder result.
-##   Neither coherent                 -> the metric fails here too. Say so and
-##                                       stop; do not quietly use it anyway.
-##
-## OUTPUT
-##   COH_per_sample.csv, COH_summary.csv, Figure10_module_coherence
-##
-## PREREQUISITE
-##   Sections 11, 12, the 12b helper block, section 18 (gene sets), and
-##   DETECT_cohort_gene_rates.csv from section 14 for detection matching.
+##   v5 (C4): the summary is a median over patients (each patient = mean of
+##   its sections), not over sections.
 ################################################################################
 
 stopifnot(exists("MODULES"), exists("work"), exists("agg"))
@@ -4719,60 +4359,32 @@ RATES_CSV <- file.path(agg, "DETECT_cohort_gene_rates.csv")
 if (!file.exists(RATES_CSV))
   stop("Section 19 needs DETECT_cohort_gene_rates.csv from section 14.")
 
-
 ## ============================================================================
-## 19.0b  CANDIDATE METABOLIC GENE SETS
-##
-##   The 71-gene GOBP glutamine family set failed the coherence test at
-##   percentile 0, and so did its hand-picked 12-gene core. Before concluding
-##   that transcript data cannot represent metabolic state at all, the obvious
-##   question is whether a BETTER SET would hold together. These four are the
-##   candidates, and they are added to the same test, unchanged.
-##
-##   WHAT EACH ONE IS, AND WHY IT IS HERE
-##
-##   GlnNarrow   GOBP_GLUTAMINE_METABOLIC_PROCESS, M11960, 21 genes.
-##               Glutamine only, without the arginine and proline arms that
-##               diluted the 71-gene set. IMPORTANT CAVEAT: all 21 of its genes
-##               are inside the set that already failed, so this is a slice of
-##               the broken instrument rather than a new one. It can still be
-##               more coherent than its parent, but if it fails too then breadth
-##               was not the problem. It also still carries CPS1, FABP1, MTTP
-##               and NR1H4, which are liver genes with no business in a
-##               pancreatic glutamine module.
-##
-##   TCA_KEGG    KEGG_CITRATE_CYCLE_TCA_CYCLE, M3985, 32 genes.
-##   TCA_React   REACTOME_CITRIC_ACID_CYCLE_TCA_CYCLE, M784, 34 genes.
-##               Genuinely new: neither shares a single gene with the failed
-##               sets. They also disagree with each other, sharing only 18
-##               genes. KEGG includes pyruvate dehydrogenase and
-##               gluconeogenesis (PC, PCK1, PCK2, ACLY); Reactome includes
-##               iron-sulfur cluster assembly (ISCU, NFS1, SDHAF1-4, FXN).
-##               That disagreement is useful rather than a nuisance: if both
-##               cohere the conclusion is robust, and if only one does we learn
-##               which definition holds together in this tissue.
-##
-##   OXPHOS      HALLMARK_OXIDATIVE_PHOSPHORYLATION, M5936, 200 genes.
-##               Sits immediately downstream of the TCA cycle. Two genes are
-##               stripped below because they are already in use elsewhere.
-##
+## 19.0b  CANDIDATE METABOLIC GENE SETS (all standard sets, verbatim)
+##   GlnNarrow    GOBP_GLUTAMINE_METABOLIC_PROCESS, M11960, 21 genes. All 21
+##                are inside the 71-gene set, so it is a slice of the same
+##                instrument. It also carries liver genes (CPS1, FABP1, MTTP,
+##                NR1H4) that are not expected in breast tissue; the coverage
+##                printed below shows how many are actually detected here.
+##   TCA_KEGG     KEGG_CITRATE_CYCLE_TCA_CYCLE, M3985, 32 genes.
+##   TCA_Reactome REACTOME_CITRIC_ACID_CYCLE_TCA_CYCLE, M784, 34 genes.
+##                The two TCA sets share only 18 genes, so if both cohere the
+##                conclusion is robust to the definition.
+##   OXPHOS       HALLMARK_OXIDATIVE_PHOSPHORYLATION, M5936, 200 genes, minus
+##                genes already in another predictor module.
 ##   All four are clean of P4HA1, P4HA2, P4HA3, P4HB, PLOD1-3 and PPIB.
 ## ============================================================================
-
-## M11960, GO:0006541, 21 unique genes, verbatim from the TSV
 CAND_GLNNARROW <- c(
   "GLYATL1B", "CPS1", "FABP1", "SIRT4", "PHGDH", "BLOC1S6", "GLS2", "GLS",
   "GLUD1", "GLUL", "MECP2", "ASL", "MTTP", "LGSN", "PFAS", "NIT2",
   "UCP2", "CAD", "ARHGAP11B", "GLYATL1", "NR1H4")
 
-## M3985, hsa00020, 32 unique genes, verbatim from the TSV
 CAND_TCA_KEGG <- c(
   "CS", "DLAT", "DLD", "DLST", "FH", "SUCLG2P2", "IDH1", "IDH2",
   "IDH3A", "IDH3B", "IDH3G", "MDH1", "MDH2", "ACLY", "ACO1", "OGDH",
   "ACO2", "PC", "PCK1", "PCK2", "PDHA1", "PDHA2", "PDHB", "OGDHL",
   "SDHA", "SDHB", "SDHC", "SDHD", "SDHCP5", "SUCLG2", "SUCLG1", "SUCLA2")
 
-## M784, R-HSA-71403, 34 unique genes, verbatim from the TSV
 CAND_TCA_REACTOME <- c(
   "CS", "IDH3G", "SDHA", "ACAT1", "DLD", "FH", "ACO2", "IDH3B",
   "OGDH", "NNT", "SDHB", "DLST", "TRAP1", "KGD4", "ISCA1", "ISCU",
@@ -4780,7 +4392,6 @@ CAND_TCA_REACTOME <- c(
   "IDH3A", "SDHAF2", "SUCLG2", "IDH2", "SDHAF3", "SDHD", "SDHAF1", "LYRM4",
   "CSKMT", "NFS1")
 
-## M5936, hallmark, 200 unique genes, verbatim from the TSV
 CAND_OXPHOS <- c(
   "ABCB7", "ACAA1", "ACAA2", "ACADM", "ACADSB", "ACADVL", "ACAT1", "ACO2",
   "AFG3L2", "AIFM1", "ALAS1", "ALDH6A1", "ATP1B1", "ATP5F1A", "ATP5F1B", "ATP5F1C",
@@ -4808,13 +4419,10 @@ CAND_OXPHOS <- c(
   "TIMM50", "TIMM8B", "TIMM9", "TOMM22", "TOMM70", "UQCR10", "UQCR11", "UQCRB",
   "UQCRC1", "UQCRC2", "UQCRFS1", "UQCRH", "UQCRQ", "VDAC1", "VDAC2", "VDAC3")
 
-## OXPHOS shares LDHA with the Hypoxia module and HSPA9 with ERstressStrict.
-## A candidate that shares genes with an existing module is not independent of
-## it, so both go. Two of 200 changes nothing about the set's character.
+## genes already in another predictor module are removed (LDHA, HSPA9)
 CAND_OXPHOS <- setdiff(CAND_OXPHOS,
                        unique(unlist(MODULES[c("Hypoxia", "CollagenSynthesis", "iCAF",
-                                               "ERstressStrict", "ERAD")],
-                                     use.names = FALSE)))
+                                               "ERstressStrict", "ERAD")], use.names = FALSE)))
 
 MODULES$GlnNarrow    <- CAND_GLNNARROW
 MODULES$TCA_KEGG     <- CAND_TCA_KEGG
@@ -4831,51 +4439,40 @@ for (nm in c("GlnNarrow", "TCA_KEGG", "TCA_Reactome", "OXPHOS")) {
 ## ============================================================================
 ## 19.0  SETTINGS
 ## ============================================================================
-## References first (we know how these behave), then the two that failed, then
-## the four candidates. Keeping the references in every run is what makes the
-## result readable: in PDAC, collagen at percentile 100 and hypoxia at 97 were
-## the picture of a module that works.
+COH_REFERENCES <- c("Hypoxia", "CollagenSynthesis")
 COH_MODULES <- c("Hypoxia", "CollagenSynthesis", "ERstressStrict", "ERAD",
                  "Glutamine", "OGcore",
                  "GlnNarrow", "TCA_KEGG", "TCA_Reactome", "OXPHOS")
 
-COH_N_NULL     <- 30     # random gene sets per module per tumour
-COH_MIN_GENES  <- 4      # a set smaller than this has no meaningful coherence
+COH_N_NULL     <- 30
+COH_MIN_GENES  <- 4
 COH_MIN_SPOTS  <- 30
 COH_SEED       <- 90125
-COH_CALIPER    <- 0.35   # relative band for detection-rate matching of null sets
+COH_CALIPER    <- 0.35
 
 assert_run_state("Section 19")
 
 ## ============================================================================
-## 19.1  BUILD THE POOL OF GENES THE NULL SETS ARE DRAWN FROM
-##
-##   Null sets must be matched to each real module on detection rate, because
-##   coherence measured on sparse data depends heavily on how often the genes
-##   are seen at all. A null built from rare genes would make any real module
-##   look coherent by comparison.
+## 19.1  NULL POOL, MATCHED ON DETECTION RATE
 ## ============================================================================
 rates <- read.csv(RATES_CSV, stringsAsFactors = FALSE)
-## BRCA: gene pool from the sections where P4HA1 can be modelled, as in 16.1,
-## so one near-empty section cannot remove genes from the pool
+## gene pool from the sections where P4HA1 can be modelled, as in 16.1
 if (exists("RND_SECTIONS")) rates <- rates[rates$sample_id %in% RND_SECTIONS, , drop = FALSE]
 gene_med <- rates %>%
   group_by(gene) %>%
   summarise(median_rate = median(detect_rate), n_tum = dplyr::n(), .groups = "drop") %>%
   filter(n_tum == dplyr::n_distinct(rates$sample_id))
 
-## genes that belong to any module under test are excluded from the null pool,
-## otherwise a null set could contain the very genes it is a null for
 ALL_MODULE_GENES <- unique(unlist(MODULES[COH_MODULES], use.names = FALSE))
 null_pool <- gene_med[!gene_med$gene %in% ALL_MODULE_GENES, ]
 
 cat("\n", strrep("=", 74), "\n", sep = "")
 cat("SECTION 19.1  SETUP\n")
 cat(strrep("=", 74), "\n", sep = "")
-cat(sprintf("  genes present in all tumours : %d\n", nrow(gene_med)))
-cat(sprintf("  excluded (module members)    : %d\n", length(ALL_MODULE_GENES)))
-cat(sprintf("  null pool                    : %d genes\n", nrow(null_pool)))
-cat("\n  modules under test:\n")
+cat(sprintf("  genes present in all sections : %d\n", nrow(gene_med)))
+cat(sprintf("  excluded (module members)     : %d\n", length(ALL_MODULE_GENES)))
+cat(sprintf("  null pool                     : %d genes\n", nrow(null_pool)))
+cat("\n  modules under test (detection in THIS cohort):\n")
 for (nm in COH_MODULES) {
   det <- intersect(MODULES[[nm]], gene_med$gene)
   mr  <- if (length(det)) median(gene_med$median_rate[gene_med$gene %in% det]) else NA_real_
@@ -4883,14 +4480,13 @@ for (nm in COH_MODULES) {
               nm, length(MODULES[[nm]]), length(det), mr))
 }
 
-## for a given module, draw COH_N_NULL random sets matched on size and rate
 draw_null_sets <- function(module_genes, n_sets) {
   det <- intersect(module_genes, gene_med$gene)
   if (length(det) < COH_MIN_GENES) return(NULL)
   target <- median(gene_med$median_rate[gene_med$gene %in% det])
   elig <- null_pool$gene[null_pool$median_rate >= target * (1 - COH_CALIPER) &
                            null_pool$median_rate <= target * (1 + COH_CALIPER)]
-  if (length(elig) < length(det) * 2) return(NULL)   # not enough to sample from
+  if (length(elig) < length(det) * 2) return(NULL)
   lapply(seq_len(n_sets), function(i) sample(elig, length(det)))
 }
 
@@ -4898,19 +4494,41 @@ set.seed(COH_SEED)
 NULL_SETS <- lapply(COH_MODULES, function(nm) draw_null_sets(MODULES[[nm]], COH_N_NULL))
 names(NULL_SETS) <- COH_MODULES
 
+## v5.1 FALLBACK. The objects store a filtered feature list (~7,500 genes), so a
+## module gene can be absent from some sections although it is expressed where
+## present (LDHA: 33 of 48 sections, detection 0.97; CA9: 9 of 48). The strict
+## rule above (present in EVERY section) then leaves Hypoxia with 3 genes and no
+## null. For modules that failed only that way, the target rate and the set size
+## come from member genes present in >= half of the sections. The null genes are
+## still drawn from the all-sections pool. A separate seed keeps the null sets of
+## every other module identical to the strict run.
+COH_FALLBACK <- character(0)
+gene_any <- rates %>%
+  group_by(gene) %>%
+  summarise(median_rate = median(detect_rate), n_tum = dplyr::n(), .groups = "drop") %>%
+  filter(n_tum >= 0.5 * dplyr::n_distinct(rates$sample_id))
+set.seed(COH_SEED + 1L)
+for (nm in COH_MODULES[vapply(NULL_SETS, is.null, logical(1))]) {
+  det <- intersect(MODULES[[nm]], gene_any$gene)
+  if (length(det) < COH_MIN_GENES) next
+  target <- median(gene_any$median_rate[gene_any$gene %in% det])
+  elig <- null_pool$gene[null_pool$median_rate >= target * (1 - COH_CALIPER) &
+                           null_pool$median_rate <= target * (1 + COH_CALIPER)]
+  if (length(elig) < length(det) * 2) next
+  NULL_SETS[[nm]] <- lapply(seq_len(COH_N_NULL), function(i) sample(elig, length(det)))
+  COH_FALLBACK <- c(COH_FALLBACK, nm)
+}
+
 cat("\n  null sets drawn:\n")
 for (nm in COH_MODULES)
-  cat(sprintf("    %-18s %s\n", nm,
-              if (is.null(NULL_SETS[[nm]])) "*** could not match, module skipped ***"
-              else sprintf("%d sets of %d genes", length(NULL_SETS[[nm]]), length(NULL_SETS[[nm]][[1]]))))
+  cat(sprintf("    %-18s %s%s\n", nm,
+              if (is.null(NULL_SETS[[nm]])) "*** could not match, module NOT TESTED ***"
+              else sprintf("%d sets of %d genes", length(NULL_SETS[[nm]]), length(NULL_SETS[[nm]][[1]])),
+              if (nm %in% COH_FALLBACK) "   (fallback: genes in >= half of the sections)" else ""))
 
 ## ============================================================================
 ## 19.2  THE TWO COHERENCE MEASURES
 ## ============================================================================
-
-## mean pairwise Spearman correlation among the rows of a gene-by-spot matrix.
-## Genes with no variance are dropped: a constant gene has no correlation with
-## anything and would otherwise inject NAs.
 coh_meanrho <- function(mat) {
   if (is.null(mat) || nrow(mat) < COH_MIN_GENES) return(NA_real_)
   keep <- apply(mat, 1, function(v) sd(v) > 0)
@@ -4921,8 +4539,6 @@ coh_meanrho <- function(mat) {
   mean(cc[upper.tri(cc)], na.rm = TRUE)
 }
 
-## proportion of variance taken by PC1 after scaling each gene. If the members
-## move as one, PC1 dominates. Less affected by ties than pairwise Spearman.
 coh_pc1 <- function(mat) {
   if (is.null(mat) || nrow(mat) < COH_MIN_GENES) return(NA_real_)
   keep <- apply(mat, 1, function(v) sd(v) > 0)
@@ -4936,7 +4552,7 @@ coh_pc1 <- function(mat) {
 }
 
 ## ============================================================================
-## 19.3  RUN, ONE TUMOUR AT A TIME
+## 19.3  RUN, ONE SECTION AT A TIME
 ## ============================================================================
 coh_one <- function(rds_path, sid) {
   obj <- readRDS(rds_path)
@@ -4974,7 +4590,6 @@ coh_one <- function(rds_path, sid) {
       }
     }
     
-    ## percentile of the real module within its own null distribution
     pct_rho <- if (sum(is.finite(null_rho)) >= 10)
       mean(null_rho[is.finite(null_rho)] < r_rho) else NA_real_
     pct_pc1 <- if (sum(is.finite(null_pc1)) >= 10)
@@ -4984,8 +4599,8 @@ coh_one <- function(rds_path, sid) {
       sample_id = sid, module = nm,
       n_genes_used = nrow(real),
       mean_rho = r_rho, pc1_var = r_pc1,
-      null_mean_rho = median(null_rho, na.rm = TRUE),
-      null_pc1 = median(null_pc1, na.rm = TRUE),
+      null_mean_rho = if (length(null_rho)) median(null_rho, na.rm = TRUE) else NA_real_,
+      null_pc1 = if (length(null_pc1)) median(null_pc1, na.rm = TRUE) else NA_real_,
       pct_rho = pct_rho, pct_pc1 = pct_pc1,
       n_null_ok = sum(is.finite(null_rho)),
       row.names = NULL)
@@ -5006,13 +4621,19 @@ for (i in seq_len(nrow(work))) {
   if (!is.null(r) && nrow(r)) coh_acc[[length(coh_acc) + 1]] <- r
 }
 coh_all <- bind(coh_acc)
-if (nrow(coh_all) == 0) stop("Section 19: no tumour produced coherence estimates.")
+if (nrow(coh_all) == 0) stop("Section 19: no section produced coherence estimates.")
 write_out(coh_all, "COH_per_sample")
 
 ## ============================================================================
-## 19.4  SUMMARISE
+## 19.4  SUMMARISE  (one value per unit, then the median over units)
 ## ============================================================================
-coh_sum <- coh_all %>%
+COH_COLS <- c("n_genes_used", "mean_rho", "null_mean_rho", "pct_rho", "pc1_var", "null_pc1", "pct_pc1")
+coh_unit <- coh_all %>%
+  mutate(unit = unit_of(sample_id)) %>%
+  group_by(module, unit) %>%
+  summarise(across(all_of(COH_COLS), ~ mean(.x, na.rm = TRUE)), .groups = "drop")
+
+coh_sum <- coh_unit %>%
   group_by(module) %>%
   summarise(k = dplyr::n(),
             median_genes = median(n_genes_used),
@@ -5030,46 +4651,43 @@ write_out(coh_sum, "COH_summary")
 cat("\n", strrep("=", 74), "\n", sep = "")
 cat("SECTION 19  DO THE GENES INSIDE EACH MODULE BEHAVE AS A UNIT?\n")
 cat(strrep("=", 74), "\n", sep = "")
-cat("  Each module is compared against random gene sets of the SAME SIZE matched\n")
-cat("  on detection rate. Absolute coherence is meaningless in sparse data; the\n")
-cat("  percentile against its own null is the number that matters.\n\n")
+cat(sprintf("  Medians over %ss. The percentile against the module's own null is the\n", UNIT_LABEL))
+cat("  number that matters.\n\n")
 
-cat(sprintf("  %-18s %6s %8s %9s %9s %8s %9s\n",
-            "module", "genes", "rho", "null rho", "pctile", "PC1", "pctile"))
+cat(sprintf("  %-18s %4s %6s %8s %9s %9s %8s %9s\n",
+            "module", "k", "genes", "rho", "null rho", "pctile", "PC1", "pctile"))
 for (i in seq_len(nrow(coh_sum))) with(coh_sum[i, ],
-                                       cat(sprintf("  %-18s %6.0f %8.3f %9.3f %8.0f%% %8.3f %8.0f%%\n",
-                                                   module, median_genes, median_rho, median_null_rho, 100*median_pct_rho,
+                                       cat(sprintf("  %-18s %4d %6.0f %8.3f %9.3f %8.0f%% %8.3f %8.0f%%\n",
+                                                   module, as.integer(k), median_genes, median_rho, median_null_rho, 100*median_pct_rho,
                                                    median_pc1, 100*median_pct_pc1)))
-
-cat("\n  rho      = mean pairwise correlation between member genes\n")
-cat("  null rho = the same for size and rate matched random sets\n")
-cat("  pctile   = where the module sits in its own null distribution\n")
-cat("  PC1      = share of variance taken by the first principal component\n")
 
 ## ============================================================================
 ## 19.5  VERDICT
-##
-##   A module that is a real biological unit should sit high in its own null
-##   distribution. 90% is the bar: it means the module is more internally
-##   consistent than 9 out of 10 random sets of the same size and detection
-##   rate. Hypoxia and CollagenSynthesis show what a working module looks like.
 ## ============================================================================
 COH_PCT_MIN <- 0.90
 
-pct_of <- function(mod, col) {
-  r <- coh_sum[coh_sum$module == mod, ]
-  if (!nrow(r)) return(NA_real_)
-  r[[col]]
-}
 passes <- function(mod) {
-  a <- pct_of(mod, "median_pct_rho"); b <- pct_of(mod, "median_pct_pc1")
-  isTRUE(a >= COH_PCT_MIN) || isTRUE(b >= COH_PCT_MIN)
+  r <- coh_sum[coh_sum$module == mod, ]
+  if (!nrow(r)) return(FALSE)
+  isTRUE(r$median_pct_rho >= COH_PCT_MIN) || isTRUE(r$median_pct_pc1 >= COH_PCT_MIN)
+}
+## v5.1: a module without a matched null was never tested; say so instead of
+## reporting it as "not coherent".
+coh_tested <- function(mod) {
+  r <- coh_sum[coh_sum$module == mod, ]
+  nrow(r) > 0 && (is.finite(r$median_pct_rho) || is.finite(r$median_pct_pc1))
+}
+coh_label <- function(mod, caps = TRUE) {
+  if (!coh_tested(mod)) return("NOT TESTED (no matched null)")
+  if (passes(mod)) (if (caps) "COHERENT" else "coherent")
+  else (if (caps) "not coherent" else "NOT coherent")
 }
 
 cat("\n", strrep("-", 74), "\n", sep = "")
 cat(sprintf("  criterion: median percentile >= %.0f%% on either measure\n\n", 100*COH_PCT_MIN))
 for (nm in coh_sum$module)
-  cat(sprintf("    %-18s %s\n", nm, if (passes(nm)) "COHERENT" else "not coherent"))
+  cat(sprintf("    %-18s %s%s\n", nm, coh_label(nm),
+              if (exists("COH_FALLBACK") && nm %in% COH_FALLBACK) "   [fallback null]" else ""))
 
 hyp_ok  <- passes("Hypoxia")
 col_ok  <- passes("CollagenSynthesis")
@@ -5080,60 +4698,35 @@ ctrl_ok <- hyp_ok || col_ok
 cat("\n", strrep("=", 74), "\n", sep = "")
 cat("VERDICT\n")
 cat(strrep("=", 74), "\n", sep = "")
-
-if (!ctrl_ok) {
-  cat("  THE TEST FAILED AGAIN, AND THIS SECTION PROVES NOTHING.\n\n")
-  cat("  Neither hypoxia nor collagen synthesis is coherent by this measure, and\n")
-  cat("  both are modules we know work. So the measure does not function in this\n")
-  cat("  data, exactly as the yardstick approach did not.\n\n")
-  cat("  Do NOT conclude anything about the glutamine module from this. Two\n")
-  cat("  diagnostics have now failed, which is itself worth telling Valerio:\n")
-  cat("  the question may not be answerable with this data type.\n")
-} else if (!glut_ok && !og_ok) {
-  cat("  THE MODULE IS NOT A COHERENT UNIT. This is the expected outcome.\n\n")
-  cat(sprintf("  Working modules: hypoxia %s, collagen synthesis %s.\n",
-              if (hyp_ok) "coherent" else "not", if (col_ok) "coherent" else "not"))
-  cat("  The glutamine module and its 12-gene core are not.\n\n")
-  cat("  WHAT THIS MEANS IN PLAIN TERMS\n")
-  cat("    A module score is an average over its member genes. That average only\n")
-  cat("    represents something real if the members move together. Here they do\n")
-  cat("    not, so the score is an average of unrelated quantities and does not\n")
-  cat("    correspond to any single biological state.\n\n")
-  cat("  WHAT IT LICENSES YOU TO SAY\n")
-  cat("    Section 18's null is about the instrument, not the biology. The\n")
-  cat("    cofactor hypothesis has not been tested, let alone refuted. This also\n")
-  cat("    explains the earlier oddity that the module correlated with nothing at\n")
-  cat("    all: there was no coherent signal in it to correlate with.\n\n")
-  cat("  WHAT IT DOES NOT LICENSE\n")
-  cat("    Any claim about whether the decoupling occurs along the cofactor axis.\n")
-  cat("    An incoherent module gives no evidence in either direction.\n\n")
-  cat("  WHY THIS WAS PREDICTABLE, IN HINDSIGHT\n")
-  cat("    The GO term spans arginine, glutamate, glutamine and proline\n")
-  cat("    metabolism. The urea cycle, proline synthesis and nitric oxide genes\n")
-  cat("    in it are not co-regulated with glutaminolysis, so there was never\n")
-  cat("    reason to expect them to move together in one tissue.\n")
-} else if (glut_ok || og_ok) {
-  cat("  THE MODULE IS COHERENT. This is the harder outcome.\n\n")
-  cat(sprintf("  Glutamine %s, 2-OG core %s.\n",
-              if (glut_ok) "coherent" else "not coherent",
-              if (og_ok) "coherent" else "not coherent"))
-  cat("  So the members do move together and the score represents something.\n")
-  cat("  Section 18's null cannot then be dismissed as an incoherent instrument.\n\n")
-  cat("  WHAT THIS MEANS\n")
-  cat("    Two readings remain, and this data cannot separate them:\n")
-  cat("      (a) the decoupling is specific to oxygen limitation rather than to\n")
-  cat("          enzymatic capacity in general; or\n")
-  cat("      (b) the module is coherent but still measures transcriptional\n")
-  cat("          co-regulation rather than metabolic flux, which is controlled\n")
-  cat("          after transcription.\n\n")
-  cat("    Coherence rules out one failure mode, not all of them. Report the\n")
-  cat("    result as it is and let Valerio judge.\n")
+cat(sprintf("  Reference modules in this cohort: hypoxia %s, collagen synthesis %s.\n",
+            coh_label("Hypoxia", caps = FALSE), coh_label("CollagenSynthesis", caps = FALSE)))
+if (coh_tested("Hypoxia") && !hyp_ok) {
+  cat("  NOTE: the hypoxia module is the axis of sections 10-16. If it is not\n")
+  cat("  coherent, the hypoxia score is a composite of its genes, not one\n")
+  cat("  coordinated programme; read the main result with that in mind.\n")
 }
 
-## ---- did any candidate set rescue the metabolic axis? ----------------------
+if (!ctrl_ok) {
+  cat("\n  NEITHER REFERENCE MODULE IS COHERENT, SO THIS SECTION PROVES NOTHING.\n")
+  cat("  The measure does not separate known modules from random genes in this\n")
+  cat("  data. Do not conclude anything about the metabolic modules from it.\n")
+} else if (!glut_ok && !og_ok) {
+  cat("\n  THE GLUTAMINE MODULE IS NOT A COHERENT UNIT IN THIS COHORT.\n")
+  cat("  Its member genes do not move together, so the score is an average of\n")
+  cat("  unrelated quantities. Section 18's result for it says something about\n")
+  cat("  the instrument, not the biology: the cofactor hypothesis has not been\n")
+  cat("  tested by it, in either direction.\n")
+} else {
+  cat(sprintf("\n  THE GLUTAMINE MODULE IS COHERENT (71-gene set %s, 12-gene core %s).\n",
+              if (glut_ok) "coherent" else "not coherent", if (og_ok) "coherent" else "not coherent"))
+  cat("  Its score represents something, so section 18's result cannot be\n")
+  cat("  dismissed as an incoherent instrument. Two readings remain: the effect\n")
+  cat("  is specific to oxygen, or the module tracks transcriptional\n")
+  cat("  co-regulation rather than metabolic flux.\n")
+}
+
 CANDIDATES <- c("GlnNarrow", "TCA_KEGG", "TCA_Reactome", "OXPHOS")
-cand_ok <- CANDIDATES[vapply(CANDIDATES, function(x)
-  x %in% coh_sum$module && passes(x), logical(1))]
+cand_ok <- CANDIDATES[vapply(CANDIDATES, passes, logical(1))]
 
 cat("\n", strrep("-", 74), "\n", sep = "")
 cat("  CANDIDATE SETS: is there a usable metabolic instrument at all?\n\n")
@@ -5141,62 +4734,44 @@ for (nm in intersect(CANDIDATES, coh_sum$module))
   cat(sprintf("    %-14s %s\n", nm, if (passes(nm)) "COHERENT" else "not coherent"))
 
 if (!ctrl_ok) {
-  cat("\n    References failed, so ignore the above. Nothing is interpretable.\n")
+  cat("\n    References failed, so ignore the above.\n")
 } else if (!length(cand_ok)) {
-  cat("\n    NONE of the candidates is coherent either.\n")
-  cat("    Four independent metabolic gene sets, from three different databases,\n")
-  cat("    all fail while collagen and hypoxia pass cleanly. That is no longer a\n")
-  cat("    bad-gene-set problem: metabolic genes do not move together in this\n")
-  cat("    data, which fits what is known biologically, since metabolic flux is\n")
-  cat("    controlled largely after transcription rather than by co-regulating\n")
-  cat("    the enzymes.\n\n")
-  cat("    CONCLUSION: the cofactor axis is not testable with Visium transcript\n")
-  cat("    data. Say that plainly. It is a real finding about method rather than\n")
-  cat("    a failure, and it saves anyone else repeating the attempt.\n")
+  cat("\n    None of the candidates is coherent either, while at least one\n")
+  cat("    reference module is. Metabolic genes do not move together in this\n")
+  cat("    data, consistent with flux being controlled mostly after\n")
+  cat("    transcription. The cofactor axis is then not testable with these\n")
+  cat("    Visium transcript data. Say that plainly.\n")
 } else {
   cat(sprintf("\n    %d candidate(s) coherent: %s\n", length(cand_ok),
               paste(cand_ok, collapse = ", ")))
-  cat("    A usable instrument may exist. Before rerunning section 18 on it,\n")
-  cat("    check two things:\n")
-  cat("      1. its correlation with the hypoxia module. A coherent metabolic\n")
-  cat("         module that simply mirrors hypoxia is not a second axis.\n")
-  cat("      2. whether it plausibly reports on 2-oxoglutarate supply. OXPHOS\n")
-  cat("         cohering would show the method works, but OXPHOS is downstream\n")
-  cat("         of the TCA cycle, not a measure of cofactor availability.\n")
-  cat("    Do not rerun the axis on all of them: that is four more tests on the\n")
-  cat("    same question. Pick one on biological grounds first.\n")
+  cat("    Before rerunning section 18 on one, check its correlation with the\n")
+  cat("    hypoxia module and whether it plausibly reports on 2-OG supply\n")
+  cat("    (OXPHOS is downstream of the TCA cycle). Pick ONE on biological grounds.\n")
 }
 
 cat("\n  CAVEATS\n")
-cat("    Sparse data means most gene pairs share many double zeros, which\n")
-cat("    inflates ties and drags correlations toward a dropout-driven value.\n")
-cat("    That is why everything is reported as a percentile against a matched\n")
-cat("    null rather than as an absolute number.\n")
-cat("    Coherence is necessary for a module score to mean anything. It is not\n")
+cat("    Coherence is necessary for a module score to mean one thing. It is not\n")
 cat("    sufficient: a coherent module can still measure the wrong thing.\n")
 cat(strrep("=", 74), "\n", sep = "")
 
 ## ============================================================================
-## 19.6  FIGURE 10
+## 19.6  FIGURE 10  (one point per unit)
 ## ============================================================================
 if (!exists("FIG_STYLES") || !exists("theme_fig")) {
   cat("\n  Figure 10 skipped: section 12 has not run.\n")
 } else {
-  pd <- coh_all[is.finite(coh_all$pct_rho), ]
+  pd <- coh_unit[is.finite(coh_unit$pct_rho), ]
   lv <- intersect(COH_MODULES, unique(pd$module))
   nice_m <- c(Hypoxia = "Hypoxia", CollagenSynthesis = "Collagen synth.",
               ERstressStrict = "ER stress", ERAD = "ERAD",
               Glutamine = "Glutamine (71)", OGcore = "2-OG core (12)",
               GlnNarrow = "Glutamine (21)", TCA_KEGG = "TCA KEGG",
               TCA_Reactome = "TCA Reactome", OXPHOS = "OXPHOS")
+  pd$is_metab <- ifelse(pd$module %in% c("Glutamine", "OGcore", CANDIDATES), "metabolic", "reference")
   pd$module <- factor(nice_m[pd$module], levels = unname(nice_m[lv]))
-  pd$is_metab <- ifelse(grepl("Glutamine|2-OG|TCA|OXPHOS", as.character(pd$module)),
-                        "metabolic", "reference")
   
   for (sn in names(FIG_STYLES)) {
     S <- FIG_STYLES[[sn]]
-    outdir <- file.path(agg, S$dir); dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
-    
     p10 <- ggplot(pd, aes(module, 100 * pct_rho)) +
       annotate("rect", xmin = -Inf, xmax = Inf, ymin = 100 * COH_PCT_MIN, ymax = Inf,
                fill = CLR$pos, alpha = 0.07) +
@@ -5209,8 +4784,8 @@ if (!exists("FIG_STYLES") || !exists("theme_fig")) {
       geom_jitter(width = .13, size = S$pt * 0.5, alpha = .55, colour = "grey25") +
       scale_fill_manual(values = c(reference = "grey92", metabolic = "#F4C9C4"), guide = "none") +
       labs(x = NULL, y = "Percentile within matched random sets",
-           caption = sprintf("One point per tumour. Shaded region above %.0f%% is where a coherent module should sit. Grey line is chance.",
-                             100 * COH_PCT_MIN)) +
+           caption = sprintf("One point per %s (mean of its sections). Shaded: above %.0f%%, where a coherent module should sit. Grey line: chance.",
+                             UNIT_LABEL, 100 * COH_PCT_MIN)) +
       theme_fig(S) +
       theme(panel.grid.major.x = element_blank(),
             panel.grid.major.y = element_line(linewidth = S$grid, colour = "grey90"),
@@ -5220,84 +4795,52 @@ if (!exists("FIG_STYLES") || !exists("theme_fig")) {
       p10 <- p10 + labs(title = "Do the genes inside each module behave as a unit?",
                         subtitle = "Compared against random gene sets of the same size and detection rate")
     
-    h <- if (isTRUE(S$split)) S$h_full else MM(74)
-    for (dv in S$devices) {
-      f <- file.path(outdir, outf("Figure10_module_coherence", dv))
-      tryCatch({
-        if (dv == "pdf") ggsave(f, p10, width = S$w2, height = h, device = PDF_DEV, bg = "white")
-        else             ggsave(f, p10, width = S$w2, height = h, dpi = S$dpi, bg = "white")
-      }, error = function(e) log_msg("  fig failed (%s): %s", basename(f), conditionMessage(e)))
-    }
-    cat(sprintf("  %s written to %s\n", outf("Figure10_module_coherence", "png"), S$dir))
+    save_fig(p10, S, sub("\\.csv$", "", outf("Figure10_module_coherence")),
+             S$w2, if (isTRUE(S$split)) S$h_full else MM(74))
   }
 }
 
 log_msg("Section 19 complete.")
+
 ################################################################################
 ## 20. DOES CELL COMPOSITION EXPLAIN THE RESULT?
 ##
-##   BRCA NOTE: the reasoning in this header was written for the PDAC
-##   cohort. Any statement about what the data showed, which module worked,
-##   or how many tumours were usable describes PDAC, not BRCA. The code
-##   below is unchanged except where tagged "BRCA:".
+##   A spot reads several cells. If oxygenated spots are mostly fibroblasts
+##   and hypoxic spots mostly tumour cells, the decoupling can appear without
+##   any cell changing its behaviour.
 ##
-##   THE WORRY
-##   A Visium spot reads several cells at once. If well oxygenated spots are
-##   mostly fibroblasts (collagen and P4HA1 together) and hypoxic spots are
-##   mostly tumour cells (P4HA1 and ER stress without collagen), the
-##   decoupling appears without any cell changing its behaviour. Only the
-##   mix inside the spot changed.
-##
-##   THE COMPOSITION MEASURE
-##   Every SeuratObj.rds carries per-spot ESTIMATE output in
-##   obj@misc$Tumor_purity_estimate$table (stromal, immune, estimate, purity),
-##   computed on Spatial counts, same method for all 23 samples (verified in
-##   PDAC). BRCA: NOT verified. A section whose object has no such table is
-##   skipped and logged (see 20.2), so check the log for how many were lost.
-##   It cannot be used as it stands: the ESTIMATE stromal signature contains
-##   COL1A2, COL3A1 and COL6A3 from CollagenSynthesis and CXCL12 from iCAF
-##   (estimate_overlap_audit.R). Adjusting for it would remove part of the
-##   collagen arm mechanically.
-##   So stroma and immune scores are REBUILT here from the ESTIMATE signatures
-##   with every gene shared with a predictor module, an outcome or the
-##   hydroxylase family removed, scored with AddModuleScore exactly like the
-##   other modules.
+##   Composition measure: stroma and immune scores REBUILT from the ESTIMATE
+##   signatures with every gene shared with a predictor module, an outcome or
+##   the hydroxylase family removed (the stromal signature contains COL1A2,
+##   COL3A1, COL6A3 and CXCL12). The per-spot ESTIMATE table stored in each
+##   object (obj@misc$Tumor_purity_estimate$table) is used only to validate
+##   the rebuilt scores; a section whose table is missing or cannot be
+##   aligned to its spots is skipped and named in the safety check.
 ##
 ##   THREE MODELS, SAME SPOTS, SAME POOLING
-##     M0 baseline    : the section 15 model unchanged. MUST reproduce the
-##                      section 15 result, or the section stops.
-##     M1 adjusted    : M0 + zStroma + zImmune. Among spots with the same
-##                      amount of stroma and immune cells, is the pattern there?
-##     M2 low stroma  : M0 fitted only in the lowest third of spots by stroma
-##                      score within each tumour. Where the spot is mostly
-##                      tumour cells, is the pattern there?
-##
-##   HOW TO READ IT
-##   Model p values are inflated by spatial autocorrelation (in PDAC 296 of
-##   1000 random genes were significant, section 16; check section 16 here). Read the size of the slope difference and how
-##   much of it survives, not the p value.
-##
-##   Run after the main pipeline in the same FRESH session, like sections 18
-##   and 19. Needs work, MODULES, SEED, ADJUST_DEPTH and the 12b helpers.
+##     M0 baseline    : the section 15 model unchanged; must reproduce it.
+##     M1 adjusted    : M0 + zStroma + zImmune.
+##     M2 low stroma  : M0 in the lowest third of spots by stroma score.
+##   Read the size of the slope difference and how much survives, not p.
 ################################################################################
 
 stopifnot(exists("MODULES"), exists("work"), exists("agg"), exists("SEED"),
           exists("ADJUST_DEPTH"), exists("pool_with_p"), exists("fmt_p"),
           exists("write_out"), exists("assert_run_state"), exists("log_msg"),
-          exists("bind"), exists("min_genes_for"))
+          exists("bind"), exists("min_genes_for"), exists("check_against_s15"))
 
 ## ============================================================================
 ## 20.0  SETTINGS
 ## ============================================================================
-SC_SIG_CSV       <- file.path(PROJECT_ROOT, "data", "estimate_audit", "ESTIMATE_signatures_used.csv")  # BRCA: from project root
+SC_SIG_CSV       <- file.path(PROJECT_ROOT, "data", "estimate_audit", "ESTIMATE_signatures_used.csv")
 SC_OUTCOMES      <- c("P4HA1", "P4HA2", "P4HA3")
 SC_ES            <- "ERstressStrict"
 SC_BASE_MODULES  <- c("Hypoxia", "CollagenSynthesis", "iCAF", SC_ES, "ERAD")
 SC_NEW_MODULES   <- c("StromaESTc", "ImmuneESTc")
 SC_MIN_SPOTS     <- 30
 SC_MIN_EVENTS    <- 70          # same as section 15
-SC_ADJUST_DEPTH  <- ADJUST_DEPTH  # derived, never set by hand
-SC_STRAT_Q       <- 1/3         # M2 keeps spots at or below this stroma quantile
+SC_ADJUST_DEPTH  <- ADJUST_DEPTH
+SC_STRAT_Q       <- 1/3
 SC_FAMILY        <- c("P4HA1", "P4HA2", "P4HA3", "P4HB", "PLOD1", "PLOD2", "PLOD3", "PPIB")
 
 SC_RENAME <- c(Hypoxia = "zHyp", CollagenSynthesis = "zCol", iCAF = "ziCAF",
@@ -5312,8 +4855,7 @@ SC_MODELS <- c("M0_baseline", "M1_adjusted", "M2_low_stroma")
 assert_run_state("Section 20")
 
 ## ============================================================================
-## 20.1  BUILD THE CLEAN STROMA AND IMMUNE GENE SETS
-##       Genes to remove are computed, never typed.
+## 20.1  BUILD THE CLEAN STROMA AND IMMUNE GENE SETS (computed, never typed)
 ## ============================================================================
 if (!file.exists(SC_SIG_CSV))
   stop("Section 20 needs ", SC_SIG_CSV, ". Run estimate_overlap_audit.R first.")
@@ -5324,7 +4866,7 @@ stopifnot(length(STROMA_RAW) == 141, length(IMMUNE_RAW) == 141)
 
 SC_BLOCK <- unique(c(unlist(MODULES[SC_BASE_MODULES], use.names = FALSE),
                      SC_FAMILY, SC_OUTCOMES))
-both_sigs <- intersect(STROMA_RAW, IMMUNE_RAW)   # a gene in both would tie them together
+both_sigs <- intersect(STROMA_RAW, IMMUNE_RAW)
 STROMA_CLEAN <- setdiff(STROMA_RAW, c(SC_BLOCK, both_sigs))
 IMMUNE_CLEAN <- setdiff(IMMUNE_RAW, c(SC_BLOCK, both_sigs))
 
@@ -5347,7 +4889,6 @@ write_out(data.frame(set  = c(rep("StromaESTc", length(STROMA_CLEAN)),
                      gene = c(STROMA_CLEAN, IMMUNE_CLEAN)),
           "SC_signature_genes_used")
 
-## ---- circularity gate: hard stop --------------------------------------------
 for (og in SC_OUTCOMES) {
   bad <- names(SC_MOD[c(SC_BASE_MODULES, SC_NEW_MODULES)])[vapply(
     SC_MOD[c(SC_BASE_MODULES, SC_NEW_MODULES)], function(g) og %in% g, logical(1))]
@@ -5358,10 +4899,9 @@ if (any(lengths(shared_new) > 0)) stop("Section 20 halted: a clean set still sha
 cat("  circularity gate: clean\n")
 
 ## ============================================================================
-## 20.2  SCORE, STANDARDISE AND VALIDATE, ONE TUMOUR AT A TIME
-##       Scoring follows section 15 exactly (same seed before each module,
-##       nbin 20, ctrl 50), so the five original scores are identical to
-##       section 15's. That is what lets M0 reproduce it.
+## 20.2  SCORE, STANDARDISE AND VALIDATE, ONE SECTION AT A TIME
+##       Scoring follows section 15 exactly, so the five original scores are
+##       identical to section 15's.
 ## ============================================================================
 sc_expr_one <- function(rds_path, sid) {
   obj <- readRDS(rds_path)
@@ -5372,15 +4912,23 @@ sc_expr_one <- function(rds_path, sid) {
     log_msg("  %s: outcome gene absent -> skipped", sid); return(NULL)
   }
   
-  ## original ESTIMATE table, aligned to the spot order used by FetchData
-  est <- obj@misc$Tumor_purity_estimate$table
-  if (is.null(est)) { log_msg("  %s: no ESTIMATE table -> skipped", sid); return(NULL) }
+  ## v5 (C3): the ESTIMATE table must be alignable to the spots. Before, a
+  ## missing meta column made max(abs(numeric(0))) = -Inf and the check passed.
+  est <- tryCatch(obj@misc$Tumor_purity_estimate$table, error = function(e) NULL)
+  if (is.null(est) || !nrow(est)) { log_msg("  %s: no ESTIMATE table -> skipped", sid); return(NULL) }
+  if (!all(c("stromal", "immune") %in% colnames(est))) {
+    log_msg("  %s: ESTIMATE table has no stromal/immune columns -> skipped", sid); return(NULL)
+  }
   if (!is.null(rownames(est)) && all(colnames(obj) %in% rownames(est))) {
     est <- est[colnames(obj), , drop = FALSE]
   } else {
-    if (nrow(est) != ncol(obj) ||
-        max(abs(est$purity - obj@meta.data$Tumor_purity_estimate)) > 1e-6)
-      stop(sprintf("Section 20, %s: ESTIMATE table cannot be aligned to spots.", sid))
+    meta_pur <- obj@meta.data$Tumor_purity_estimate
+    aligned <- !is.null(meta_pur) && "purity" %in% colnames(est) &&
+      nrow(est) == ncol(obj) && length(meta_pur) == nrow(est) &&
+      isTRUE(max(abs(est$purity - meta_pur), na.rm = FALSE) <= 1e-6)
+    if (!aligned) {
+      log_msg("  %s: ESTIMATE table cannot be aligned to the spots -> skipped", sid); return(NULL)
+    }
   }
   
   for (nm in c(SC_BASE_MODULES, SC_NEW_MODULES)) {
@@ -5392,7 +4940,7 @@ sc_expr_one <- function(rds_path, sid) {
     }
     set.seed(SEED)
     obj <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
-                                   assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
+                                              assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
                     error = function(e) NULL)
     if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) return(NULL)
     names(obj@meta.data)[names(obj@meta.data) == paste0(nm, "1")] <- nm
@@ -5427,8 +4975,8 @@ sc_expr_one <- function(rds_path, sid) {
 
 ## ============================================================================
 ## 20.3  FIT ONE MODEL FOR ONE OUTCOME
-##       M2 keeps the whole-tumour z-scores, so its units stay 1 SD of the
-##       whole tumour and its contrast is directly comparable to M0.
+##       M2 keeps the whole-section z-scores, so its contrast is in the same
+##       units as M0.
 ## ============================================================================
 fit_sc_one <- function(d, sid, out_gene, model) {
   out <- list(coef = NULL, contrast = NULL, status = NULL)
@@ -5531,29 +5079,17 @@ sc_con_pooled <- sc_con %>%
 write_out(sc_con_pooled, "SC_slope_difference_pooled")
 
 ## ============================================================================
-## 20.6  SAFETY CHECK: M0 MUST REPRODUCE SECTION 15, FOR EVERY OUTCOME
+## 20.6  SAFETY CHECK: M0 MUST REPRODUCE SECTION 15, SECTION BY SECTION
 ## ============================================================================
-cat("\n", strrep("=", 74), "\n", sep = "")
-cat("SECTION 20.6  SAFETY CHECK\n")
-cat(strrep("=", 74), "\n", sep = "")
 m0_est <- setNames(rep(NA_real_, length(SC_OUTCOMES)), SC_OUTCOMES)
 for (og in SC_OUTCOMES) {
-  m0 <- sc_con_pooled[sc_con_pooled$outcome == og & sc_con_pooled$model == "M0_baseline" &
-                        sc_con_pooled$contrast == "interaction_diff", ]
-  if (!nrow(m0)) stop("Section 20 halted: no M0 result for ", og)
-  if (exists("iso_con_pooled")) {
-    ref <- iso_con_pooled[iso_con_pooled$outcome == og &
-                            iso_con_pooled$contrast == "interaction_diff", ]$est
-    tol <- 1e-6; ref_src <- "section 15 in this session"
-  } else {
-    stop("Section 20 needs section 15 (iso_con_pooled) in the same session for the safety check.")
-  }
-  cat(sprintf("  %-6s M0 = %+.5f   reference = %+.5f (%s)\n", og, m0$est, ref, ref_src))
-  if (!length(ref) || abs(m0$est - ref) > tol)
-    stop("Section 20 halted: M0 does not reproduce section 15 for ", og, ". Nothing below is interpretable.")
-  m0_est[og] <- m0$est
+  m0_ps <- sc_con[sc_con$outcome == og & sc_con$model == "M0_baseline" &
+                    sc_con$contrast == "interaction_diff", ]
+  if (!nrow(m0_ps)) { cat(sprintf("\n  %s: no M0 fit, outcome left out of section 20.\n", og)); next }
+  check_against_s15(m0_ps, og, "Section 20")
+  m0_est[og] <- sc_con_pooled$est[sc_con_pooled$outcome == og & sc_con_pooled$model == "M0_baseline" &
+                                    sc_con_pooled$contrast == "interaction_diff"]
 }
-cat("  PASSED: every baseline is the section 15 result.\n")
 
 ## ============================================================================
 ## 20.7  REPORT
@@ -5562,31 +5098,35 @@ cat("\n", strrep("=", 74), "\n", sep = "")
 cat(sprintf("SECTION 20  [%s]  run_id %s\n", if (SC_ADJUST_DEPTH) "DEPTH ADJUSTED" else "UNADJUSTED", RUN_ID))
 cat(strrep("=", 74), "\n", sep = "")
 
-cat("\n--- is the rebuilt composition measure the same thing as ESTIMATE? ---\n")
+um <- function(x) unit_median(x, sc_val$sample_id)
+cat(sprintf("\n--- is the rebuilt composition measure the same thing as ESTIMATE? (median over %ss) ---\n", UNIT_LABEL))
 cat(sprintf("  stroma vs ESTIMATE stromal : median rho %.2f (min %.2f)\n",
-            median(sc_val$rho_stroma_vs_ESTIMATE), min(sc_val$rho_stroma_vs_ESTIMATE)))
+            um(sc_val$rho_stroma_vs_ESTIMATE), min(sc_val$rho_stroma_vs_ESTIMATE, na.rm = TRUE)))
 cat(sprintf("  immune vs ESTIMATE immune  : median rho %.2f (min %.2f)\n",
-            median(sc_val$rho_immune_vs_ESTIMATE), min(sc_val$rho_immune_vs_ESTIMATE)))
+            um(sc_val$rho_immune_vs_ESTIMATE), min(sc_val$rho_immune_vs_ESTIMATE, na.rm = TRUE)))
 
 cat("\n--- how strongly stroma travels with the model's predictors ---\n")
-cat(sprintf("  stroma vs collagen synthesis : median rho %+.2f\n", median(sc_val$rho_stroma_vs_collagen)))
-cat(sprintf("  stroma vs hypoxia            : median rho %+.2f\n", median(sc_val$rho_stroma_vs_hypoxia)))
-cat(sprintf("  stroma vs ER stress          : median rho %+.2f\n", median(sc_val$rho_stroma_vs_ERstress)))
-cat(sprintf("  immune vs hypoxia            : median rho %+.2f\n", median(sc_val$rho_immune_vs_hypoxia)))
+cat(sprintf("  stroma vs collagen synthesis : median rho %+.2f\n", um(sc_val$rho_stroma_vs_collagen)))
+cat(sprintf("  stroma vs hypoxia            : median rho %+.2f\n", um(sc_val$rho_stroma_vs_hypoxia)))
+cat(sprintf("  stroma vs ER stress          : median rho %+.2f\n", um(sc_val$rho_stroma_vs_ERstress)))
+cat(sprintf("  immune vs hypoxia            : median rho %+.2f\n", um(sc_val$rho_immune_vs_hypoxia)))
 
 for (og in SC_OUTCOMES) {
+  if (!is.finite(m0_est[og])) next
   cat("\n", strrep("-", 74), "\n", sep = "")
   cat(sprintf("  OUTCOME %s\n", og))
   cat(strrep("-", 74), "\n", sep = "")
   
-  cat("\n  tumours per model\n")
+  cat("\n  sections per model\n")
   for (md in SC_MODELS) {
     s <- sc_stat[sc_stat$outcome == og & sc_stat$model == md, ]
     cat(sprintf("    %-14s fitted in %2d / %2d   median spots %5.0f   median events %5.0f\n",
-                md, sum(s$fitted), nrow(s), median(s$n_spots[s$fitted]), median(s$n_events[s$fitted])))
+                md, sum(s$fitted), nrow(s),
+                if (any(s$fitted)) median(s$n_spots[s$fitted]) else NA_real_,
+                if (any(s$fitted)) median(s$n_events[s$fitted]) else NA_real_))
     drop <- s[!s$fitted, ]
     for (j in seq_len(nrow(drop)))
-      cat(sprintf("                   excluded: %-26s %s\n", drop$sample_id[j], drop$reason[j]))
+      cat(sprintf("                   excluded: %-30s %s\n", drop$sample_id[j], drop$reason[j]))
   }
   
   cat("\n  THE HEADLINE: difference between the two slopes\n")
@@ -5594,8 +5134,8 @@ for (og in SC_OUTCOMES) {
     r <- sc_con_pooled[sc_con_pooled$outcome == og & sc_con_pooled$model == md &
                          sc_con_pooled$contrast == "interaction_diff", ]
     if (!nrow(r)) next
-    cat(sprintf("    %-14s %+.4f  (95%% CI %+.4f to %+.4f)  k=%2d  I2=%3.0f%%  p = %-10s  retained %4.0f%% of M0\n",
-                md, r$est, r$lower, r$upper, r$k, r$I2, fmt_p(r$p), 100 * r$est / m0_est[og]))
+    cat(sprintf("    %-14s %+.4f  (95%% CI %+.4f to %+.4f)  %s  I2=%3.0f%%  p = %-10s  retained %4.0f%% of M0\n",
+                md, r$est, r$lower, r$upper, k_lab(r), r$I2, fmt_p(r$p), 100 * r$est / m0_est[og]))
   }
   
   cat("\n  the individual terms\n")
@@ -5613,47 +5153,32 @@ for (og in SC_OUTCOMES) {
 
 cat("\nCAVEATS\n")
 cat("  Model p values are inflated by spatial autocorrelation; read effect sizes.\n")
-cat(sprintf("  k counts %s (POOL_LEVEL = %s); section 21 gives the other unit.\n",
-            if (POOL_LEVEL == "patient") "patients" else "sections", POOL_LEVEL))
+cat(sprintf("  k counts %s (POOL_LEVEL = %s); section 21 gives the other unit.\n", K_UNIT, POOL_LEVEL))
 cat("  ESTIMATE signatures were built for bulk tumours, not single spots.\n")
-cat("  Stroma and collagen synthesis are biologically linked (rho about 0.7 in PDAC), so M1\n")
-cat("  asks a narrower question than 'does composition explain it'. M2 is cleaner.\n")
-cat("  M2 keeps whole-tumour z-scores; its hypoxia and collagen ranges are narrower.\n")
-cat("  Compare models WITHIN a gene. Coefficient sizes are not comparable ACROSS\n")
-cat("  genes with different detection rates.\n")
-cat("  P4HA3 is detected in few spots, so M2 may lose many tumours for it; read its\n")
-cat("  k before reading its estimate.\n")
+cat(sprintf("  Stroma and collagen synthesis travel together here (median rho %+.2f), so\n",
+            um(sc_val$rho_stroma_vs_collagen)))
+cat("  M1 asks a narrower question than 'does composition explain it'. M2 is cleaner.\n")
+cat("  M2 may lose sections (fewer events); compare k before comparing estimates.\n")
+cat("  Compare models WITHIN a gene, not across genes with different detection.\n")
 cat(strrep("=", 74), "\n", sep = "")
 
 log_msg("Section 20 complete.")
+
 ################################################################################
-## 21. SECTION-LEVEL SENSITIVITY   (BRCA: the PDAC section 21, turned around)
+## 21. SECTION-LEVEL SENSITIVITY
 ##
-##   THE SITUATION
-##   In PDAC, pooling was over sections and this section checked patients.
-##   In BRCA the pipeline already pools over patients (POOL_LEVEL, section 0),
-##   because several patients contribute 4 to 6 serial sections. So this
-##   section now reports the other direction: what the result would have been
-##   with sections as the unit, as in the PDAC analysis.
-##
-##   WHAT THIS DOES
+##   The pipeline pools over patients (POOL_LEVEL). This section reports the
+##   other direction: the result with sections as the unit.
 ##   1. Reproduces the pipeline's pooled results from the per-section CSVs
-##      with its own code (fixed effect within patient, then DerSimonian-Laird
-##      across patients). If it cannot, it stops: then its pooling is not the
-##      pipeline's pooling.
+##      with its own code; stops if it cannot.
 ##   2. Pools the same per-section estimates with sections as the unit.
-##   3. If metafor is installed, fits a three-level model (sections nested in
-##      patients) as a second opinion that does not assume serial sections
-##      estimate exactly the same thing.
-##   4. Repeats the patient pooling treating HT339B1 and HT339B2 as one person.
-##      The lookup table gives them different HTAN participant IDs (HTA12_250,
-##      HTA12_262) but they share the HT339 prefix; it is not confirmed whether
-##      they are the same person. Same situation as HT270P1 / HT270P2 in PDAC.
-##
+##   3. With metafor: a three-level model (sections nested in patients).
+##   4. Repeats the patient pooling treating HT339B1 and HT339B2 as one
+##      person (different HTAN participant IDs, shared HT339 prefix; not
+##      confirmed whether they are the same person).
 ##   No model is refitted. Standalone: needs only the aggregate CSVs.
 ################################################################################
 
-## BRCA: same folder logic as section 0, so this also runs in a fresh session
 if (!exists("OUT_ROOT")) {
   PROJECT_ROOT       <- Sys.getenv("P4HA1_BRCA_ROOT", unset = path.expand("~/p4ha1_brca"))
   INCLUDE_METASTASIS <- FALSE      # keep in step with section 0
@@ -5669,9 +5194,7 @@ TOL <- 1e-6
 if (!dir.exists(AGG_DIR)) stop("AGG_DIR not found: ", AGG_DIR, ". Set P4HA1_BRCA_ROOT.")
 
 ## ============================================================================
-## 21.0  READ THE PER-SECTION CONTRASTS AND THE SECTION -> PATIENT MAP
-##       Only unadjusted rows, and only one run_id per file, so nothing from
-##       different runs is mixed.
+## 21.0  READ (unadjusted rows only, one run_id per file)
 ## ============================================================================
 read_one <- function(name, required = TRUE) {
   f <- file.path(AGG_DIR, paste0(name, ".csv"))
@@ -5692,28 +5215,24 @@ cat("\n", strrep("=", 74), "\n", sep = "")
 cat("SECTION 21  SECTION-LEVEL SENSITIVITY\n")
 cat(strrep("=", 74), "\n", sep = "")
 cat("\nInputs:\n")
-iso    <- read_one("ISOFORM_contrasts_per_sample")
-iso_pl <- read_one("ISOFORM_slope_difference_pooled")
-sc     <- read_one("SC_contrasts_per_sample", required = FALSE)     # section 20 is optional
-sc_pl  <- read_one("SC_slope_difference_pooled", required = FALSE)
-cmap   <- read_one("cohort_sections")
+s21_iso    <- read_one("ISOFORM_contrasts_per_sample")
+s21_iso_pl <- read_one("ISOFORM_slope_difference_pooled")
+s21_sc     <- read_one("SC_contrasts_per_sample", required = FALSE)
+s21_sc_pl  <- read_one("SC_slope_difference_pooled", required = FALSE)
+cmap       <- read_one("cohort_sections")
 
-iso <- iso[iso$contrast == "interaction_diff", ]
-if (!is.null(sc)) sc <- sc[sc$contrast == "interaction_diff", ]
+s21_iso <- s21_iso[s21_iso$contrast == "interaction_diff", ]
+if (!is.null(s21_sc)) s21_sc <- s21_sc[s21_sc$contrast == "interaction_diff", ]
 
-## ============================================================================
-## 21.1  PATIENT ID FROM THE COHORT TABLE (not parsed from the section ID:
-##       BRCA IDs such as S17-41599-Fs1U1Bp1 do not follow the HT pattern)
-## ============================================================================
+## patient ID from the cohort table (BRCA IDs do not follow one pattern)
 pid_of <- function(sid) {
   p <- cmap$patient_id[match(sid, cmap$sample_id)]
   if (anyNA(p)) stop("No patient for: ", paste(unique(sid[is.na(p)]), collapse = ", "))
   p
 }
-map <- unique(data.frame(sample_id = iso$sample_id, patient = pid_of(iso$sample_id)))
+map <- unique(data.frame(sample_id = s21_iso$sample_id, patient = pid_of(s21_iso$sample_id)))
 map <- map[order(map$patient, map$sample_id), ]
-n_pat <- length(unique(map$patient))
-cat(sprintf("\nSections %d, patients %d\n", nrow(map), n_pat))
+cat(sprintf("\nSections %d, patients %d\n", nrow(map), length(unique(map$patient))))
 print(table(map$patient))
 
 ## ============================================================================
@@ -5728,12 +5247,11 @@ dl_pool <- function(y, v) {
   t2 <- if (k > 1 && C > 0) max(0, (Q - df) / C) else 0
   ws <- 1 / (v + t2); est <- sum(ws * y) / sum(ws); se <- sqrt(1 / sum(ws))
   I2 <- if (k > 1 && Q > 0) max(0, (Q - df) / Q) * 100 else 0
-  c(est = est, lower = est - qnorm(0.975) * se, upper = est + qnorm(0.975) * se,
+  c(est = est, lower = est - 1.96 * se, upper = est + 1.96 * se,
     p = 2 * pnorm(-abs(est / se)), k = k, I2 = I2)
 }
 
-## fixed-effect, inverse variance, within one patient (same as meta_pool)
-fe_collapse <- function(d, pid) {
+fe_collapse_pid <- function(d, pid) {
   d$patient <- pid
   do.call(rbind, lapply(split(d, d$patient), function(x) {
     ok <- is.finite(x$est) & is.finite(x$var) & x$var > 0; x <- x[ok, ]
@@ -5743,53 +5261,53 @@ fe_collapse <- function(d, pid) {
                est = sum(w * x$est) / sum(w), var = 1 / sum(w))
   }))
 }
-pat_pool <- function(d, pid) { pc <- fe_collapse(d, pid); dl_pool(pc$est, pc$var) }
-
-## the pipeline's own pooling unit for this run
-run_pool <- function(d) if (identical(POOL_LEVEL, "section")) dl_pool(d$est, d$var) else pat_pool(d, pid_of(d$sample_id))
+pat_pool_pid <- function(d, pid) { pc <- fe_collapse_pid(d, pid); dl_pool(pc$est, pc$var) }
+run_pool <- function(d) if (identical(POOL_LEVEL, "section")) dl_pool(d$est, d$var) else pat_pool_pid(d, pid_of(d$sample_id))
 
 ## ============================================================================
 ## 21.3  CHECK: REPRODUCE THE PIPELINE'S POOLED RESULTS
 ## ============================================================================
-cat(sprintf("\nCheck: does this script's pooling reproduce the pipeline's (POOL_LEVEL = %s)?\n", POOL_LEVEL))
+cat(sprintf("\nCheck: does this pooling reproduce the pipeline's (POOL_LEVEL = %s)?\n", POOL_LEVEL))
 chk <- list()
-for (og in unique(iso$outcome)) {
-  mine <- run_pool(iso[iso$outcome == og, ])
-  ref  <- iso_pl$est[iso_pl$outcome == og & iso_pl$contrast == "interaction_diff"]
-  chk[[length(chk) + 1]] <- c(label = paste("S15", og), mine = mine[["est"]], ref = ref)
+for (og in unique(s21_iso$outcome)) {
+  mine <- run_pool(s21_iso[s21_iso$outcome == og, ])
+  ref  <- s21_iso_pl$est[s21_iso_pl$outcome == og & s21_iso_pl$contrast == "interaction_diff"]
+  chk[[length(chk) + 1]] <- data.frame(label = paste("S15", og), mine = mine[["est"]],
+                                       ref = if (length(ref) == 1) ref else NA_real_)
 }
-if (!is.null(sc)) for (og in unique(sc$outcome)) for (md in unique(sc$model)) {
-  s <- sc[sc$outcome == og & sc$model == md, ]
+if (!is.null(s21_sc)) for (og in unique(s21_sc$outcome)) for (md in unique(s21_sc$model)) {
+  s <- s21_sc[s21_sc$outcome == og & s21_sc$model == md, ]
   mine <- run_pool(s)
-  ref  <- sc_pl$est[sc_pl$outcome == og & sc_pl$model == md & sc_pl$contrast == "interaction_diff"]
-  chk[[length(chk) + 1]] <- c(label = paste("S20", og, md), mine = mine[["est"]], ref = ref)
+  ref  <- s21_sc_pl$est[s21_sc_pl$outcome == og & s21_sc_pl$model == md & s21_sc_pl$contrast == "interaction_diff"]
+  chk[[length(chk) + 1]] <- data.frame(label = paste("S20", og, md), mine = mine[["est"]],
+                                       ref = if (length(ref) == 1) ref else NA_real_)
 }
-chk <- as.data.frame(do.call(rbind, chk), stringsAsFactors = FALSE)
-chk$mine <- as.numeric(chk$mine); chk$ref <- as.numeric(chk$ref)
-chk$ok <- abs(chk$mine - chk$ref) < TOL
+chk <- do.call(rbind, chk)
+chk$ok <- is.finite(chk$mine) & is.finite(chk$ref) & abs(chk$mine - chk$ref) < TOL
 for (i in seq_len(nrow(chk)))
   cat(sprintf("  %-26s mine %+.6f  pipeline %+.6f  %s\n",
               chk$label[i], chk$mine[i], chk$ref[i], if (isTRUE(chk$ok[i])) "ok" else "*** MISMATCH ***"))
-if (!all(chk$ok %in% TRUE)) stop("Section 21 halted: this pooling does not reproduce the pipeline's. Nothing below is interpretable.")
+if (!all(chk$ok)) stop("Section 21 halted: this pooling does not reproduce the pipeline's. Nothing below is interpretable.")
 cat("  PASSED\n")
 
 ## ============================================================================
-## 21.4  PATIENT LEVEL (primary) vs SECTION LEVEL (PDAC style)
+## 21.4  PATIENT LEVEL vs SECTION LEVEL
 ## ============================================================================
 analyses <- list()
-for (og in unique(iso$outcome))
-  analyses[[paste("S15", og)]] <- iso[iso$outcome == og, ]
-if (!is.null(sc)) for (og in unique(sc$outcome)) for (md in c("M1_adjusted", "M2_low_stroma"))
-  analyses[[paste("S20", og, md)]] <- sc[sc$outcome == og & sc$model == md, ]
+for (og in unique(s21_iso$outcome))
+  analyses[[paste("S15", og)]] <- s21_iso[s21_iso$outcome == og, ]
+if (!is.null(s21_sc)) for (og in unique(s21_sc$outcome)) for (md in c("M1_adjusted", "M2_low_stroma"))
+  analyses[[paste("S20", og, md)]] <- s21_sc[s21_sc$outcome == og & s21_sc$model == md, ]
+analyses <- analyses[vapply(analyses, nrow, integer(1)) > 0]
 
 pid_merged <- function(sid) { p <- pid_of(sid); p[p == "HT339B2"] <- "HT339B1"; p }
 
 has_metafor <- requireNamespace("metafor", quietly = TRUE)
-res <- do.call(rbind, lapply(names(analyses), function(lb) {
+res21 <- do.call(rbind, lapply(names(analyses), function(lb) {
   d   <- analyses[[lb]]
   s   <- dl_pool(d$est, d$var)
-  pp  <- pat_pool(d, pid_of(d$sample_id))
-  pm  <- pat_pool(d, pid_merged(d$sample_id))
+  pp  <- pat_pool_pid(d, pid_of(d$sample_id))
+  pm  <- pat_pool_pid(d, pid_merged(d$sample_id))
   ml <- c(est = NA, lower = NA, upper = NA)
   if (has_metafor && nrow(d) >= 3) {
     fit <- tryCatch(metafor::rma.mv(yi = d$est, V = d$var,
@@ -5806,314 +5324,189 @@ res <- do.call(rbind, lapply(names(analyses), function(lb) {
              ml_est = ml[["est"]], ml_lo = ml[["lower"]], ml_hi = ml[["upper"]],
              row.names = NULL)
 }))
-res$ci_excludes_0_pat <- res$pat_hi < 0 | res$pat_lo > 0
-res$ci_excludes_0_sec <- res$sec_hi < 0 | res$sec_lo > 0
-write.csv(res, file.path(OUT_DIR, "SECTION_level_sensitivity.csv"), row.names = FALSE)
+res21$ci_excludes_0_pat <- res21$pat_hi < 0 | res21$pat_lo > 0
+res21$ci_excludes_0_sec <- res21$sec_hi < 0 | res21$sec_lo > 0
+write.csv(res21, file.path(OUT_DIR, "SECTION_level_sensitivity.csv"), row.names = FALSE)
 
 cat("\n", strrep("-", 74), "\n", sep = "")
 cat("SLOPE DIFFERENCE: PATIENTS (primary) vs SECTIONS\n")
 cat(strrep("-", 74), "\n", sep = "")
 fmt <- function(e, l, h) if (is.na(e)) "            n/a            " else sprintf("%+.4f (%+.4f to %+.4f)", e, l, h)
-for (i in seq_len(nrow(res))) with(res[i, ], {
+for (i in seq_len(nrow(res21))) with(res21[i, ], {
   cat(sprintf("\n  %s\n", analysis))
-  cat(sprintf("    patients  k=%2d  %s  p = %.2g  I2 = %.0f%%\n", k_pat, fmt(pat_est, pat_lo, pat_hi), pat_p, pat_I2))
-  cat(sprintf("    sections  k=%2d  %s  p = %.2g%s\n", k_sec, fmt(sec_est, sec_lo, sec_hi), sec_p,
-              if (ci_excludes_0_sec != ci_excludes_0_pat) "   <-- CONCLUSION CHANGES" else ""))
-  cat(sprintf("    HT339 merged k=%2d  %s\n", k_patm, fmt(patm_est, patm_lo, patm_hi)))
-  if (has_metafor) cat(sprintf("    3-level       %s\n", fmt(ml_est, ml_lo, ml_hi)))
+  cat(sprintf("    patients     k=%2d  %s  p = %.2g  I2 = %.0f%%\n", as.integer(k_pat), fmt(pat_est, pat_lo, pat_hi), pat_p, pat_I2))
+  cat(sprintf("    sections     k=%2d  %s  p = %.2g%s\n", as.integer(k_sec), fmt(sec_est, sec_lo, sec_hi), sec_p,
+              if (isTRUE(ci_excludes_0_sec != ci_excludes_0_pat)) "   <-- CONCLUSION CHANGES" else ""))
+  cat(sprintf("    HT339 merged k=%2d  %s\n", as.integer(k_patm), fmt(patm_est, patm_lo, patm_hi)))
+  if (has_metafor) cat(sprintf("    3-level            %s\n", fmt(ml_est, ml_lo, ml_hi)))
 })
 
 cat("\nNOTES\n")
 if (!has_metafor) cat("  metafor not installed, so the three-level check was skipped.\n")
-if (is.null(sc))  cat("  Section 20 outputs not found, so only section 15 contrasts were checked.\n")
-cat("  Within a patient, sections are combined as fixed effect: it assumes they\n")
-cat("  estimate the same thing and are independent. Serial sections are not\n")
-cat("  independent, so each patient's variance is too small. The three-level\n")
-cat("  model does not make that assumption.\n")
-cat("  Model p values remain inflated by spatial autocorrelation.\n")
+if (is.null(s21_sc)) cat("  Section 20 outputs not found, so only section 15 contrasts were checked.\n")
+cat("  Within a patient, sections are combined as fixed effect, assuming they are\n")
+cat("  independent; serial sections are not, so each patient's variance is too\n")
+cat("  small. The three-level model does not make that assumption.\n")
 cat("  Output: ", file.path(OUT_DIR, "SECTION_level_sensitivity.csv"), "\n", sep = "")
 cat(strrep("=", 74), "\n", sep = "")
 
 ################################################################################
 ## 22. INFLUENCE OF SINGLE PATIENTS, AND THE METASTASIS
-##
-##   THREE QUESTIONS, ALL ANSWERED FROM THE PER-SECTION CSVs. No model is
-##   refitted, so this runs in seconds and cannot change any estimate.
-##
-##   22.A  LEAVE ONE PATIENT OUT
-##         Drop each patient (all of their sections) in turn and pool the
-##         rest. If the headline moves a lot when one patient goes, the result
-##         rests on that patient and its identity has to be reported.
-##         BRCA: PDAC dropped one SECTION at a time. With up to 6 serial
-##         sections per patient that would leave the rest of the tumour in.
-##
-##   22.B  WITH vs WITHOUT THE METASTASIS
-##         BRCA: the 5 metastatic sections all come from one patient, HT268B1
-##         (Sample_ID_Lookup_table_v1, sheet Visium). The main run leaves them
-##         out (INCLUDE_METASTASIS <- FALSE). Run the pipeline once more with
-##         INCLUDE_METASTASIS <- TRUE, then run this section on that output:
-##         it reports the pooled result with and without HT268B1.
-##
-##   22.C  SIGN CONCORDANCE
-##         How many patients (and sections) point the same way, before any
-##         pooling. A pooled coefficient hides this.
-##
-##   Standalone: needs only the aggregate CSVs, not the pipeline session.
+##   22.A  Leave one PATIENT out (with all of their sections).
+##   22.B  With vs without the metastatic patient (HT268B1). Only possible on
+##         the output of a run with INCLUDE_METASTASIS <- TRUE.
+##   22.C  Sign concordance across patients and sections, before pooling.
+##   No model is refitted. Standalone: needs only the aggregate CSVs.
 ################################################################################
 
-if (!exists("OUT_ROOT")) {
-  PROJECT_ROOT       <- Sys.getenv("P4HA1_BRCA_ROOT", unset = path.expand("~/p4ha1_brca"))
-  INCLUDE_METASTASIS <- FALSE      # set TRUE to read the with-metastasis run
-  POOL_LEVEL         <- "patient"
-  OUT_ROOT <- file.path(PROJECT_ROOT, paste0(
-    if (INCLUDE_METASTASIS) "cohort_with_metastasis" else "cohort_primary",
-    if (POOL_LEVEL == "section") "_sectionpool" else ""))
-}
-if (!identical(POOL_LEVEL, "patient"))
-  stop("Section 22 is written for POOL_LEVEL = 'patient'. Section 21 covers the section level.")
-AGG_DIR   <- file.path(OUT_ROOT, "aggregate")
-OUT_DIR   <- AGG_DIR
-TOL       <- 1e-6
-
-if (!dir.exists(AGG_DIR)) stop("AGG_DIR not found: ", AGG_DIR)
-
-## ============================================================================
-## 22.0  READ
-## ============================================================================
-read_one <- function(name, required = TRUE) {
-  f <- file.path(AGG_DIR, paste0(name, ".csv"))
-  if (!file.exists(f)) { if (required) stop("Missing file: ", f) else return(NULL) }
-  d <- read.csv(f, stringsAsFactors = FALSE)
-  if ("adjust_depth" %in% names(d)) d <- d[!as.logical(d$adjust_depth), , drop = FALSE]
-  if ("run_id" %in% names(d)) {
-    ids <- unique(d$run_id)
-    if (length(ids) != 1) stop(name, " holds several run_ids: ", paste(ids, collapse = ", "))
-    cat(sprintf("  %-34s run_id %s, %d rows\n", name, ids, nrow(d)))
+if (!identical(POOL_LEVEL, "patient")) {
+  cat("\nSection 22 skipped: it is written for POOL_LEVEL = 'patient'. Section 21 covers the section level.\n")
+} else {
+  
+  cat("\n", strrep("=", 74), "\n", sep = "")
+  cat("SECTION 22  SINGLE-PATIENT INFLUENCE AND THE METASTASIS\n")
+  cat(strrep("=", 74), "\n", sep = "")
+  cat("\nInputs:\n")
+  s22_iso    <- read_one("ISOFORM_contrasts_per_sample")
+  s22_iso_pl <- read_one("ISOFORM_slope_difference_pooled")
+  s22_sc     <- read_one("SC_contrasts_per_sample", required = FALSE)
+  s22_sc_pl  <- read_one("SC_slope_difference_pooled", required = FALSE)
+  cmap       <- read_one("cohort_sections")
+  
+  s22_iso <- s22_iso[s22_iso$contrast == "interaction_diff", ]
+  if (!is.null(s22_sc)) s22_sc <- s22_sc[s22_sc$contrast == "interaction_diff", ]
+  
+  met_patients <- unique(cmap$patient_id[cmap$primary_metastasis == "Metastasis"])
+  
+  fe_collapse22 <- function(d) fe_collapse_pid(d, pid_of(d$sample_id))
+  pat_pool22    <- function(pc) dl_pool(pc$est, pc$var)
+  excl0 <- function(lo, hi) (is.finite(lo) && is.finite(hi)) && (hi < 0 || lo > 0)
+  
+  analyses22 <- list()
+  for (og in unique(s22_iso$outcome)) analyses22[[paste("S15", og)]] <- s22_iso[s22_iso$outcome == og, ]
+  if (!is.null(s22_sc))
+    for (og in unique(s22_sc$outcome)) for (md in c("M1_adjusted", "M2_low_stroma"))
+      analyses22[[paste("S20", og, md)]] <- s22_sc[s22_sc$outcome == og & s22_sc$model == md, ]
+  analyses22 <- analyses22[vapply(analyses22, nrow, integer(1)) > 0]
+  
+  ## ---- check: reproduce the pipeline -------------------------------------
+  cat("\nCheck: reproduce the pipeline's pooled estimates\n")
+  ok_all <- TRUE
+  for (lb in names(analyses22)) {
+    d <- analyses22[[lb]]
+    mine <- pat_pool22(fe_collapse22(d))[["est"]]
+    ref <- if (grepl("^S15", lb)) {
+      og <- sub("^S15 ", "", lb)
+      s22_iso_pl$est[s22_iso_pl$outcome == og & s22_iso_pl$contrast == "interaction_diff"]
+    } else {
+      p <- strsplit(lb, " ")[[1]]
+      s22_sc_pl$est[s22_sc_pl$outcome == p[2] & s22_sc_pl$model == p[3] & s22_sc_pl$contrast == "interaction_diff"]
+    }
+    good <- length(ref) == 1 && isTRUE(abs(mine - ref) < TOL)
+    ok_all <- ok_all && good
+    cat(sprintf("  %-26s mine %+.6f  pipeline %+.6f  %s\n", lb, mine,
+                if (length(ref) == 1) ref else NA_real_, if (good) "ok" else "*** MISMATCH ***"))
   }
-  d
-}
-
-cat("\n", strrep("=", 74), "\n", sep = "")
-cat("SECTION 22  SINGLE-PATIENT INFLUENCE AND THE METASTASIS\n")
-cat(strrep("=", 74), "\n", sep = "")
-cat("\nInputs:\n")
-iso    <- read_one("ISOFORM_contrasts_per_sample")
-iso_pl <- read_one("ISOFORM_slope_difference_pooled")
-sc     <- read_one("SC_contrasts_per_sample", required = FALSE)
-sc_pl  <- read_one("SC_slope_difference_pooled", required = FALSE)
-cmap   <- read_one("cohort_sections")
-
-iso <- iso[iso$contrast == "interaction_diff", ]
-if (!is.null(sc)) sc <- sc[sc$contrast == "interaction_diff", ]
-
-pid_of <- function(sid) {
-  p <- cmap$patient_id[match(sid, cmap$sample_id)]
-  if (anyNA(p)) stop("No patient for: ", paste(unique(sid[is.na(p)]), collapse = ", "))
-  p
-}
-met_patients <- unique(cmap$patient_id[cmap$primary_metastasis == "Metastasis"])
-
-## ============================================================================
-## 22.1  POOLING  (same as the pipeline's patient-level meta_pool; verified below)
-## ============================================================================
-dl_pool <- function(y, v) {
-  ok <- is.finite(y) & is.finite(v) & v > 0; y <- y[ok]; v <- v[ok]; k <- length(y)
-  if (k == 0) return(c(est = NA, lower = NA, upper = NA, p = NA, k = 0, I2 = NA))
-  w  <- 1 / v; fe <- sum(w * y) / sum(w)
-  Q  <- sum(w * (y - fe)^2); df <- k - 1
-  C  <- sum(w) - sum(w^2) / sum(w)
-  t2 <- if (k > 1 && C > 0) max(0, (Q - df) / C) else 0
-  ws <- 1 / (v + t2); est <- sum(ws * y) / sum(ws); se <- sqrt(1 / sum(ws))
-  c(est = est, lower = est - qnorm(.975) * se, upper = est + qnorm(.975) * se,
-    p = 2 * pnorm(-abs(est / se)), k = k,
-    I2 = if (k > 1 && Q > 0) max(0, (Q - df) / Q) * 100 else 0)
-}
-fe_collapse <- function(d) {
-  d$patient <- pid_of(d$sample_id)
-  do.call(rbind, lapply(split(d, d$patient), function(x) {
-    ok <- is.finite(x$est) & is.finite(x$var) & x$var > 0; x <- x[ok, ]
-    if (!nrow(x)) return(NULL)
-    w <- 1 / x$var
-    data.frame(patient = x$patient[1], n_sections = nrow(x),
-               est = sum(w * x$est) / sum(w), var = 1 / sum(w))
-  }))
-}
-pat_pool <- function(pc) dl_pool(pc$est, pc$var)
-excl0 <- function(lo, hi) (is.finite(lo) && is.finite(hi)) && (hi < 0 || lo > 0)
-
-## the analyses to run, each a data frame of per-section contrasts
-analyses <- list()
-for (og in unique(iso$outcome)) analyses[[paste("S15", og)]] <- iso[iso$outcome == og, ]
-if (!is.null(sc))
-  for (og in unique(sc$outcome)) for (md in c("M1_adjusted", "M2_low_stroma"))
-    analyses[[paste("S20", og, md)]] <- sc[sc$outcome == og & sc$model == md, ]
-
-## ============================================================================
-## 22.2  CHECK: does this pooling reproduce the pipeline's?
-## ============================================================================
-cat("\nCheck: reproduce the pipeline's pooled estimates\n")
-ok_all <- TRUE
-for (lb in names(analyses)) {
-  d <- analyses[[lb]]
-  mine <- pat_pool(fe_collapse(d))[["est"]]
-  ref <- if (grepl("^S15", lb)) {
-    og <- sub("^S15 ", "", lb)
-    iso_pl$est[iso_pl$outcome == og & iso_pl$contrast == "interaction_diff"]
-  } else {
-    p <- strsplit(lb, " ")[[1]]
-    sc_pl$est[sc_pl$outcome == p[2] & sc_pl$model == p[3] & sc_pl$contrast == "interaction_diff"]
+  if (!ok_all) stop("Section 22 halted: pooling does not reproduce the pipeline. Nothing below is interpretable.")
+  cat("  PASSED\n")
+  
+  ## ---- leave one out, metastasis, concordance ----------------------------
+  res22 <- list(); loo_rows <- list()
+  for (lb in names(analyses22)) {
+    d    <- analyses22[[lb]]
+    pc   <- fe_collapse22(d)
+    pall <- pat_pool22(pc)
+    
+    loo <- do.call(rbind, lapply(pc$patient, function(s) {
+      r <- pat_pool22(pc[pc$patient != s, ])
+      data.frame(analysis = lb, dropped = s, n_sections_dropped = pc$n_sections[pc$patient == s],
+                 est = r[["est"]], lower = r[["lower"]], upper = r[["upper"]], p = r[["p"]], k = r[["k"]],
+                 shift = r[["est"]] - pall[["est"]],
+                 still_excludes_0 = excl0(r[["lower"]], r[["upper"]]), row.names = NULL)
+    }))
+    loo_rows[[lb]] <- loo
+    
+    has_met <- any(pc$patient %in% met_patients)
+    prim <- if (has_met) pat_pool22(pc[!pc$patient %in% met_patients, ])
+    else c(est = NA, lower = NA, upper = NA, p = NA, k = NA, I2 = NA)
+    
+    res22[[lb]] <- data.frame(
+      analysis = lb,
+      k = pall[["k"]], est = pall[["est"]], lower = pall[["lower"]], upper = pall[["upper"]],
+      loo_min = min(loo$est, na.rm = TRUE), loo_max = max(loo$est, na.rm = TRUE),
+      loo_max_abs_shift = max(abs(loo$shift), na.rm = TRUE),
+      most_influential = loo$dropped[which.max(abs(loo$shift))],
+      loo_any_conclusion_change = any(loo$still_excludes_0 != excl0(pall[["lower"]], pall[["upper"]])),
+      has_metastasis = has_met,
+      primary_k = prim[["k"]], primary_est = prim[["est"]],
+      primary_lower = prim[["lower"]], primary_upper = prim[["upper"]],
+      same_sign_patients = sum(sign(pc$est) == sign(pall[["est"]]), na.rm = TRUE), n_patients = nrow(pc),
+      same_sign_sections = sum(sign(d$est)  == sign(pall[["est"]]), na.rm = TRUE), n_sections = nrow(d),
+      row.names = NULL)
   }
-  good <- length(ref) == 1 && isTRUE(abs(mine - ref) < TOL)
-  ok_all <- ok_all && good
-  cat(sprintf("  %-26s mine %+.6f  pipeline %+.6f  %s\n", lb, mine,
-              if (length(ref) == 1) ref else NA_real_, if (good) "ok" else "*** MISMATCH ***"))
-}
-if (!ok_all) stop("Section 22 halted: pooling does not reproduce the pipeline. Nothing below is interpretable.")
-cat("  PASSED\n")
-
-## ============================================================================
-## 22.3  LEAVE ONE PATIENT OUT, WITHOUT THE METASTASIS, SIGN CONCORDANCE
-## ============================================================================
-res  <- list()
-loo_rows <- list()
-
-for (lb in names(analyses)) {
-  d   <- analyses[[lb]]
-  pc  <- fe_collapse(d)
-  all <- pat_pool(pc)
+  res_df <- do.call(rbind, res22)
+  loo_df <- do.call(rbind, loo_rows)
+  write.csv(res_df, file.path(OUT_DIR, "LOO_summary.csv"), row.names = FALSE)
+  write.csv(loo_df, file.path(OUT_DIR, "LOO_per_dropped_patient.csv"), row.names = FALSE)
   
-  ## A. leave one patient out
-  loo <- do.call(rbind, lapply(pc$patient, function(s) {
-    r <- pat_pool(pc[pc$patient != s, ])
-    data.frame(analysis = lb, dropped = s, n_sections_dropped = pc$n_sections[pc$patient == s],
-               est = r[["est"]], lower = r[["lower"]],
-               upper = r[["upper"]], p = r[["p"]], k = r[["k"]],
-               shift = r[["est"]] - all[["est"]],
-               still_excludes_0 = excl0(r[["lower"]], r[["upper"]]), row.names = NULL)
-  }))
-  loo_rows[[lb]] <- loo
+  for (i in seq_len(nrow(res_df))) with(res_df[i, ], {
+    cat("\n", strrep("-", 74), "\n", sep = "")
+    cat(sprintf("  %s\n", analysis))
+    cat(strrep("-", 74), "\n", sep = "")
+    cat(sprintf("    all patients     k=%2d  %+.4f (%+.4f to %+.4f)\n", as.integer(k), est, lower, upper))
+    cat(sprintf("    leave one out          range %+.4f to %+.4f   largest shift %+.4f when %s is dropped\n",
+                loo_min, loo_max, loo_max_abs_shift, most_influential))
+    cat(sprintf("    conclusion            %s\n",
+                if (loo_any_conclusion_change) "*** CHANGES when at least one patient is dropped ***"
+                else "unchanged by dropping any single patient"))
+    if (has_metastasis)
+      cat(sprintf("    without metastasis k=%2d  %+.4f (%+.4f to %+.4f)%s\n",
+                  as.integer(primary_k), primary_est, primary_lower, primary_upper,
+                  if (excl0(primary_lower, primary_upper) != excl0(lower, upper))
+                    "   <-- CONCLUSION CHANGES" else ""))
+    else
+      cat("    metastasis            not in this run (primary-only); rerun with INCLUDE_METASTASIS <- TRUE\n")
+    cat(sprintf("    same direction as the pooled estimate in %d of %d patients (%d of %d sections)\n",
+                as.integer(same_sign_patients), as.integer(n_patients),
+                as.integer(same_sign_sections), as.integer(n_sections)))
+  })
   
-  ## B. without the metastatic patient (only possible in the with-metastasis run)
-  has_met <- any(pc$patient %in% met_patients)
-  prim <- if (has_met) pat_pool(pc[!pc$patient %in% met_patients, ])
-          else c(est = NA, lower = NA, upper = NA, p = NA, k = NA, I2 = NA)
+  hl <- "S15 P4HA1"
+  if (hl %in% names(loo_rows)) {
+    l <- loo_rows[[hl]]
+    l <- l[order(-abs(l$shift)), ]
+    cat("\n", strrep("-", 74), "\n", sep = "")
+    cat("  MOST INFLUENTIAL PATIENTS FOR THE HEADLINE (S15 P4HA1)\n")
+    cat(strrep("-", 74), "\n", sep = "")
+    for (j in seq_len(min(3, nrow(l)))) with(l[j, ],
+                                             cat(sprintf("    drop %-12s (%d sections) -> %+.4f  (shift %+.4f)\n",
+                                                         dropped, as.integer(n_sections_dropped), est, shift)))
+  }
   
-  ## C. sign concordance, before pooling
-  same_pat <- sum(sign(pc$est) == sign(all[["est"]]), na.rm = TRUE)
-  same_sec <- sum(sign(d$est)  == sign(all[["est"]]), na.rm = TRUE)
-  
-  res[[lb]] <- data.frame(
-    analysis = lb,
-    k = all[["k"]], est = all[["est"]], lower = all[["lower"]], upper = all[["upper"]],
-    loo_min = min(loo$est), loo_max = max(loo$est),
-    loo_max_abs_shift = max(abs(loo$shift)),
-    most_influential = loo$dropped[which.max(abs(loo$shift))],
-    loo_any_conclusion_change = any(loo$still_excludes_0 != excl0(all[["lower"]], all[["upper"]])),
-    has_metastasis = has_met,
-    primary_k = prim[["k"]], primary_est = prim[["est"]],
-    primary_lower = prim[["lower"]], primary_upper = prim[["upper"]],
-    same_sign_patients = same_pat, n_patients = nrow(pc),
-    same_sign_sections = same_sec, n_sections = nrow(d),
-    row.names = NULL)
+  cat("\nNOTES\n")
+  cat("  No model was refitted; every number comes from the stored per-section fits.\n")
+  cat("  Model p values remain inflated by spatial autocorrelation.\n")
+  cat(strrep("=", 74), "\n", sep = "")
 }
 
-res_df <- do.call(rbind, res)
-loo_df <- do.call(rbind, loo_rows)
-write.csv(res_df, file.path(OUT_DIR, "LOO_summary.csv"), row.names = FALSE)
-write.csv(loo_df, file.path(OUT_DIR, "LOO_per_dropped_patient.csv"), row.names = FALSE)
-
-## ============================================================================
-## 22.4  REPORT
-## ============================================================================
-for (i in seq_len(nrow(res_df))) with(res_df[i, ], {
-  cat("\n", strrep("-", 74), "\n", sep = "")
-  cat(sprintf("  %s\n", analysis))
-  cat(strrep("-", 74), "\n", sep = "")
-  cat(sprintf("    all patients     k=%2d  %+.4f (%+.4f to %+.4f)\n", k, est, lower, upper))
-  cat(sprintf("    leave one out          range %+.4f to %+.4f   largest shift %+.4f when %s is dropped\n",
-              loo_min, loo_max, loo_max_abs_shift, most_influential))
-  cat(sprintf("    conclusion            %s\n",
-              if (loo_any_conclusion_change) "*** CHANGES when at least one patient is dropped ***"
-              else "unchanged by dropping any single patient"))
-  if (has_metastasis)
-    cat(sprintf("    without metastasis k=%2d  %+.4f (%+.4f to %+.4f)%s\n",
-                primary_k, primary_est, primary_lower, primary_upper,
-                if (excl0(primary_lower, primary_upper) != excl0(lower, upper))
-                  "   <-- CONCLUSION CHANGES" else ""))
-  else
-    cat("    metastasis            not in this run (primary-only); rerun with INCLUDE_METASTASIS <- TRUE\n")
-  cat(sprintf("    same direction as the pooled estimate in %d of %d patients (%d of %d sections)\n",
-              same_sign_patients, n_patients, same_sign_sections, n_sections))
-})
-
-## the three most influential patients for the headline analysis
-hl <- "S15 P4HA1"
-if (hl %in% names(loo_rows)) {
-  l <- loo_rows[[hl]]
-  l <- l[order(-abs(l$shift)), ]
-  cat("\n", strrep("-", 74), "\n", sep = "")
-  cat("  MOST INFLUENTIAL PATIENTS FOR THE HEADLINE (S15 P4HA1)\n")
-  cat(strrep("-", 74), "\n", sep = "")
-  for (j in seq_len(min(3, nrow(l)))) with(l[j, ],
-    cat(sprintf("    drop %-12s (%d sections) -> %+.4f  (shift %+.4f)\n", dropped, n_sections_dropped, est, shift)))
-  cat("  A patient that moves the estimate a lot is not an error. It is worth\n")
-  cat("  knowing what is unusual about it before someone else asks.\n")
-}
-
-cat("\nNOTES\n")
-cat("  No model was refitted; every number comes from the stored per-section fits.\n")
-cat("  Leave one out drops a PATIENT with all of their sections.\n")
-cat("  Model p values remain inflated by spatial autocorrelation.\n")
-cat("  Output: LOO_summary.csv and LOO_per_dropped_patient.csv in ", OUT_DIR, "\n", sep = "")
-cat(strrep("=", 74), "\n", sep = "")
 ################################################################################
 ## 23. IS THE RESULT CARRIED BY ONE ER-STRESS GENE?
 ##
-##   BRCA NOTE: the reasoning in this header was written for the PDAC
-##   cohort. Any statement about what the data showed, which module worked,
-##   or how many tumours were usable describes PDAC, not BRCA. The code
-##   below is unchanged except where tagged "BRCA:".
-##
-##   THE WORRY
-##   The ER stress arm rests on one hand-built 24-gene module that fails the
-##   coherence test of section 19 (percentile 0 on mean rho, 7 on PC1). If the
-##   whole finding is produced by one or two members, then "P4HA1 tracks ER
-##   stress" is really "P4HA1 tracks HSPA5", which is a different and much
-##   smaller claim.
-##
-##   WHAT THIS DOES
-##   Refits the section 15 model 25 times per tumour: once with the full
-##   module, then once with each of the 24 genes removed in turn. Nothing else
-##   changes. Every fit is pooled exactly as in section 15.
-##
-##   THE CHECK THAT MAKES IT READABLE
-##   The full-module run MUST reproduce the section 15 P4HA1 estimate to six
-##   decimals. If it does not, the scoring differs from section 15 and no
-##   comparison below means anything, so the section stops.
-##
-##   THE OPEN QUESTION IT ALSO ANSWERS
-##   ATF4 and CHAC1 are PERK-responsive and were kept, while HYOU1, DDIT4 and
-##   ERO1A were dropped as hypoxia-responsive. That exclusion rule has been an
-##   inconsistency in the pipeline for weeks. This says whether it matters.
-##
-##   HOW TO READ IT
-##   All 24 estimates close to the full one  -> no single gene carries the
-##        result. That is the sentence worth having.
-##   One gene's removal collapses it         -> say so plainly and name the
-##        gene. The claim then has to be rewritten around that gene.
-##
-##   COST: 25 module scorings per tumour, so a few minutes. Outcome is P4HA1
-##   only; the point is the robustness of the headline, not a survey.
-##
+##   The ER stress arm rests on one hand-built 24-gene module (section 19
+##   reports whether it is coherent in this cohort). If one or two members
+##   produce the whole finding, "P4HA1 tracks ER stress" is really "P4HA1
+##   tracks that gene". The section 15 model is refitted once with the full
+##   module and once with each gene removed in turn; nothing else changes.
+##   The full-module fit must reproduce section 15, section by section.
+##   Also answers whether keeping ATF4 / CHAC1 (PERK-responsive) while
+##   dropping HYOU1 / DDIT4 / ERO1A matters. Outcome: P4HA1 only.
 ##   Run after the main pipeline in the same FRESH session.
 ################################################################################
 
 stopifnot(exists("MODULES"), exists("work"), exists("agg"), exists("SEED"),
           exists("ADJUST_DEPTH"), exists("pool_with_p"), exists("fmt_p"),
           exists("write_out"), exists("assert_run_state"), exists("log_msg"),
-          exists("bind"), exists("min_genes_for"))
-if (!exists("iso_con_pooled"))
-  stop("Section 23 needs section 15 (iso_con_pooled) in the same session for the safety check.")
+          exists("bind"), exists("min_genes_for"), exists("check_against_s15"))
 
 ## ============================================================================
 ## 23.0  SETTINGS
@@ -6124,13 +5517,10 @@ EL_OTHER        <- c("Hypoxia", "CollagenSynthesis", "iCAF", "ERAD")
 EL_MIN_SPOTS    <- 30
 EL_MIN_EVENTS   <- 70
 EL_ADJUST_DEPTH <- ADJUST_DEPTH
-EL_TOL          <- 1e-6
 
-EL_GENES <- MODULES[[EL_ES]]
+EL_GENES    <- MODULES[[EL_ES]]
 EL_VARIANTS <- c("FULL", EL_GENES)      # FULL first, then one per dropped gene
-
-## genes worth naming in the report whatever happens
-EL_FLAGGED <- intersect(c("ATF4", "CHAC1"), EL_GENES)
+EL_FLAGGED  <- intersect(c("ATF4", "CHAC1"), EL_GENES)
 
 EL_RENAME <- c(Hypoxia = "zHyp", CollagenSynthesis = "zCol", iCAF = "ziCAF", ERAD = "zERAD")
 EL_II_COL <- "zHyp:zCol"
@@ -6140,20 +5530,22 @@ EL_RHS <- paste0("zHyp * zCol + zHyp * zER + ziCAF + zERAD",
 
 assert_run_state("Section 23")
 
+## v5 (C3): only the sections section 15 fitted for this outcome
+EL_SECTIONS <- s15_fitted(EL_OUTCOME)
+
 cat("\n", strrep("=", 74), "\n", sep = "")
 cat("SECTION 23  LEAVE ONE ER-STRESS GENE OUT\n")
 cat(strrep("=", 74), "\n", sep = "")
-cat(sprintf("  module %s has %d genes, so %d model fits per tumour\n",
-            EL_ES, length(EL_GENES), length(EL_VARIANTS)))
+cat(sprintf("  module %s has %d genes, so %d model fits per section, on %d sections\n",
+            EL_ES, length(EL_GENES), length(EL_VARIANTS), length(EL_SECTIONS)))
 cat(sprintf("  genes: %s\n", paste(EL_GENES, collapse = ", ")))
 
-## the outcome must not be inside any predictor module
 for (m in c(EL_OTHER, EL_ES))
   if (EL_OUTCOME %in% MODULES[[m]])
     stop("Section 23 halted: ", EL_OUTCOME, " is inside ", m)
 
 ## ============================================================================
-## 23.1  ONE TUMOUR: SCORE THE FIXED MODULES ONCE, THEN EVERY ER VARIANT
+## 23.1  ONE SECTION: SCORE THE FIXED MODULES ONCE, THEN EVERY ER VARIANT
 ## ============================================================================
 el_one <- function(rds_path, sid) {
   obj <- readRDS(rds_path)
@@ -6161,7 +5553,6 @@ el_one <- function(rds_path, sid) {
   DefaultAssay(obj) <- if ("SCT" %in% Assays(obj)) "SCT" else Assays(obj)[1]
   if (!EL_OUTCOME %in% rownames(obj)) { log_msg("  %s: outcome absent -> skipped", sid); return(NULL) }
   
-  ## fixed predictors, scored exactly as in section 15
   for (nm in EL_OTHER) {
     full <- MODULES[[nm]]; g <- intersect(full, rownames(obj))
     if (length(g) < min_genes_for(full)) {
@@ -6169,26 +5560,27 @@ el_one <- function(rds_path, sid) {
     }
     set.seed(SEED)
     obj <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
-                                   assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
+                                              assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
                     error = function(e) NULL)
     if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) return(NULL)
     names(obj@meta.data)[names(obj@meta.data) == paste0(nm, "1")] <- nm
   }
   
-  ## every ER variant, scored into its own column
   for (v in EL_VARIANTS) {
     set_v <- if (identical(v, "FULL")) EL_GENES else setdiff(EL_GENES, v)
     g <- intersect(set_v, rownames(obj))
-    if (length(g) < min_genes_for(set_v)) {
+    ## the FULL variant uses the full module's threshold, exactly as section 15
+    if (length(g) < min_genes_for(if (identical(v, "FULL")) EL_GENES else set_v)) {
       log_msg("  %s: ER variant %s has %d/%d genes -> variant skipped", sid, v, length(g), length(set_v))
       next
     }
     nm <- paste0("ERv_", v)
     set.seed(SEED)
-    obj <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
-                                   assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
-                    error = function(e) NULL)
-    if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) next
+    o <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
+                                            assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
+                  error = function(e) NULL)
+    if (is.null(o) || !paste0(nm, "1") %in% colnames(o@meta.data)) next
+    obj <- o
     names(obj@meta.data)[names(obj@meta.data) == paste0(nm, "1")] <- nm
   }
   
@@ -6254,6 +5646,7 @@ el_acc <- list()
 for (i in seq_len(nrow(work))) {
   path <- work$path[i]; sid <- work$sample_id[i]
   if (is.na(path) || !file.exists(path)) next
+  if (!sid %in% EL_SECTIONS) next
   log_msg("[elo %d/%d] %s", i, nrow(work), sid)
   d <- tryCatch(el_one(path, sid),
                 error = function(e) { log_msg("  elo skipped: %s", conditionMessage(e)); NULL })
@@ -6268,28 +5661,24 @@ el_all <- bind(el_acc)
 if (nrow(el_all) == 0) stop("Section 23: nothing was fitted.")
 write_out(el_all, "ERLOO_per_sample")
 
-el_pooled <- el_all %>%
-  group_by(variant) %>% group_modify(~ pool_with_p(.x$est, .x$var, .x$sample_id)) %>% ungroup()
-write_out(el_pooled, "ERLOO_pooled")
-
 ## ============================================================================
 ## 23.4  SAFETY CHECK: THE FULL MODULE MUST REPRODUCE SECTION 15
 ## ============================================================================
-full <- el_pooled[el_pooled$variant == "FULL", ]
-ref  <- iso_con_pooled[iso_con_pooled$outcome == EL_OUTCOME &
-                         iso_con_pooled$contrast == "interaction_diff", ]$est
-cat("\n", strrep("=", 74), "\n", sep = "")
-cat("SECTION 23.4  SAFETY CHECK\n")
-cat(strrep("=", 74), "\n", sep = "")
-cat(sprintf("  FULL module = %+.6f   section 15 = %+.6f\n", full$est, ref))
-if (!nrow(full) || abs(full$est - ref) > EL_TOL)
-  stop("Section 23 halted: the full module does not reproduce section 15. Nothing below is interpretable.")
-cat("  PASSED\n")
+check_against_s15(el_all[el_all$variant == "FULL", ], EL_OUTCOME, "Section 23")
+
+## every variant is pooled on the sections where the FULL module was fitted,
+## so a removal is never confounded with a change of sections
+el_secs <- unique(el_all$sample_id[el_all$variant == "FULL"])
+el_use  <- el_all[el_all$sample_id %in% el_secs, ]
+el_pooled <- el_use %>%
+  group_by(variant) %>% group_modify(~ pool_with_p(.x$est, .x$var, .x$sample_id)) %>% ungroup()
+write_out(el_pooled, "ERLOO_pooled")
 
 ## ============================================================================
 ## 23.5  REPORT
 ## ============================================================================
 excl0 <- function(lo, hi) (is.finite(lo) && is.finite(hi)) && (hi < 0 || lo > 0)
+full <- el_pooled[el_pooled$variant == "FULL", ]
 base_sig <- excl0(full$lower, full$upper)
 
 el_rep <- el_pooled[el_pooled$variant != "FULL", ]
@@ -6304,38 +5693,36 @@ cat("\n", strrep("=", 74), "\n", sep = "")
 cat(sprintf("SECTION 23  [%s]  run_id %s\n",
             if (EL_ADJUST_DEPTH) "DEPTH ADJUSTED" else "UNADJUSTED", RUN_ID))
 cat(strrep("=", 74), "\n", sep = "")
-cat(sprintf("\n  full module (%d genes) : %+.4f  (95%% CI %+.4f to %+.4f)  k=%d  p = %s\n",
-            length(EL_GENES), full$est, full$lower, full$upper, full$k, fmt_p(full$p)))
+cat(sprintf("\n  full module (%d genes) : %+.4f  (95%% CI %+.4f to %+.4f)  %s  p = %s\n",
+            length(EL_GENES), full$est, full$lower, full$upper, k_lab(full), fmt_p(full$p)))
 
 cat("\n  each gene removed in turn, ordered by how much it moves the result\n\n")
 cat(sprintf("  %-10s %9s %21s %5s %9s %8s\n", "dropped", "estimate", "95% CI", "k", "shift", "kept %"))
 for (i in seq_len(nrow(el_rep))) with(el_rep[i, ],
                                       cat(sprintf("  %-10s %+9.4f  %+8.4f to %+8.4f %5d %+9.4f %7.0f%%%s%s\n",
-                                                  variant, est, lower, upper, k, shift, pct_retained,
+                                                  variant, est, lower, upper, as.integer(k), shift, pct_retained,
                                                   if (still_excl0 != base_sig) "   <-- CONCLUSION CHANGES" else "",
                                                   if (variant %in% EL_FLAGGED) "   [flagged gene]" else "")))
 
 cat(sprintf("\n  range across all %d single-gene removals: %+.4f to %+.4f\n",
             nrow(el_rep), min(el_rep$est), max(el_rep$est)))
 
-## ---- the verdict -----------------------------------------------------------
 changed <- el_rep$variant[el_rep$still_excl0 != base_sig]
 cat("\n", strrep("-", 74), "\n", sep = "")
 cat("  VERDICT\n")
 cat(strrep("-", 74), "\n", sep = "")
-if (!length(changed)) {
-  cat("  NO SINGLE GENE CARRIES THE RESULT.\n")
-  cat("  Removing any one of the 24 genes leaves the slope difference in the\n")
-  cat("  same direction and still excluding zero. The ER stress arm is a\n")
-  cat("  property of the set, not of one member.\n")
-  cat("  This is the sentence to put in the paper, and it is a stronger answer\n")
-  cat("  to the coherence problem than any p value.\n")
+if (!base_sig) {
+  cat("  The full-module slope difference does not exclude zero in this cohort,\n")
+  cat("  so there is no result for a single gene to carry. Removals are shown\n")
+  cat("  for completeness only.\n")
+} else if (!length(changed)) {
+  cat("  NO SINGLE GENE CARRIES THE RESULT. Removing any one gene leaves the\n")
+  cat("  slope difference in the same direction and still excluding zero.\n")
 } else {
   cat(sprintf("  *** THE RESULT DEPENDS ON %d GENE(S): %s ***\n",
               length(changed), paste(changed, collapse = ", ")))
   cat("  Removing it changes whether the interval excludes zero. The claim has\n")
-  cat("  to be rewritten around that gene rather than around 'ER stress', and\n")
-  cat("  the gene's own biology has to be explained. Report this plainly.\n")
+  cat("  to be rewritten around that gene rather than around 'ER stress'.\n")
 }
 
 if (length(EL_FLAGGED)) {
@@ -6345,17 +5732,13 @@ if (length(EL_FLAGGED)) {
     if (nrow(r) == 1)
       cat(sprintf("    without %-6s %+.4f  (%.0f%% of the full estimate)\n", g, r$est, r$pct_retained))
   }
-  cat("    These two are PERK-responsive and were kept, while HYOU1, DDIT4 and\n")
-  cat("    ERO1A were dropped as hypoxia-responsive. If the numbers above are\n")
-  cat("    close to the full estimate, the inconsistent exclusion rule does not\n")
-  cat("    affect the result and you can say so instead of defending the rule.\n")
+  cat("    If these are close to the full estimate, the inconsistent exclusion\n")
+  cat("    rule does not affect the result.\n")
 }
 
 cat("\nCAVEATS\n")
-cat("  Only P4HA1 was refitted. The same check for P4HA2 is a one-line change.\n")
-cat("  Removing one gene from 24 is a small perturbation; this tests dependence\n")
-cat("  on single members, not whether a different ER stress definition agrees.\n")
-cat("  That is a separate question and needs independent UPR gene sets.\n")
+cat("  Only P4HA1 was refitted. Removing one of 24 genes is a small perturbation;\n")
+cat("  section 24 tests whether different ER stress DEFINITIONS agree.\n")
 cat("  Model p values remain inflated by spatial autocorrelation.\n")
 cat(strrep("=", 74), "\n", sep = "")
 
@@ -6364,76 +5747,38 @@ log_msg("Section 23 complete.")
 ################################################################################
 ## 24. DOES THE ER-STRESS RESULT HOLD WITH INDEPENDENT UPR GENE SETS?
 ##
-##   BRCA NOTE: the reasoning in this header was written for the PDAC
-##   cohort. Any statement about what the data showed, which module worked,
-##   or how many tumours were usable describes PDAC, not BRCA. The code
-##   below is unchanged except where tagged "BRCA:".
-##
-##   THE WORRY THIS ANSWERS
-##   Section 23 showed no single gene carries the result. That is dependence on
-##   MEMBERS. This asks the other question: dependence on the DEFINITION. The
-##   whole ER stress arm rests on one hand-built 24-gene module. If only that
-##   module produces the pattern, the finding is about a gene list. If several
-##   independently published definitions agree, it is about ER stress.
-##
-##   WHAT IS FITTED
-##   The section 15 model, unchanged, with zER built from each candidate set in
-##   turn. ERstressStrict is refitted as the reference and MUST reproduce the
-##   section 15 number, or the section stops.
-##
-##   TWO DIAGNOSTICS PRINTED BEFORE ANY ESTIMATE
-##   1. Overlap with ERstressStrict (Jaccard). A set sharing most of its genes
-##      is not an independent test, it is the same module in other clothes.
-##      Agreement from such a set is weak evidence and must be labelled.
-##   2. Correlation with the hypoxia module. This is the VEGFA lesson from
-##      section 11: a UPR set loaded with hypoxia-responsive genes would
-##      manufacture the very interaction being tested. Genes shared with the
-##      Hypoxia, CollagenSynthesis or iCAF modules are STRIPPED automatically
-##      and named, and the residual correlation is still reported.
-##
-##   WHAT THIS DOES NOT DO
-##   It does not check whether the candidate sets are internally coherent. To
-##   get that, add their names to COH_MODULES in section 19 and re-run it: the
-##   sets are left in MODULES by this section for exactly that purpose. Note
-##   ERstressStrict itself fails coherence, so failing it is not disqualifying
-##   here; it is context.
-##
-##   INPUT
-##   A folder of MSigDB TSV files, one per candidate set. Suggested:
-##     HALLMARK_UNFOLDED_PROTEIN_RESPONSE          (the parent of the hand-built
-##                                                  module, so NOT independent)
-##     GOBP_RESPONSE_TO_ENDOPLASMIC_RETICULUM_STRESS
-##     GOBP_IRE1_MEDIATED_UNFOLDED_PROTEIN_RESPONSE
-##     GOBP_PERK_MEDIATED_UNFOLDED_PROTEIN_RESPONSE
-##     GOBP_ATF6_MEDIATED_UNFOLDED_PROTEIN_RESPONSE
-##   The last three are the three arms of the UPR and are the most interesting
-##   result available here: if one arm carries the signal and another does not,
-##   that is biology rather than a robustness check.
-##
-##   Run after the main pipeline in the same FRESH session.
+##   Section 23 tested dependence on MEMBERS; this tests dependence on the
+##   DEFINITION. The section 15 model is refitted with zER built from each
+##   published set in turn; ERstressStrict is refitted as the reference and
+##   must reproduce section 15.
+##   Diagnostics printed before any estimate: overlap with ERstressStrict
+##   (Jaccard) and correlation with the hypoxia module. Genes shared with
+##   Hypoxia, CollagenSynthesis or iCAF are stripped automatically.
+##   INPUT: a folder of MSigDB TSV files (data/upr_sets), e.g.
+##     HALLMARK_UNFOLDED_PROTEIN_RESPONSE (the parent of the hand-built
+##       module, so NOT independent), GOBP_RESPONSE_TO_ENDOPLASMIC_RETICULUM_
+##       STRESS, and the IRE1 / PERK / ATF6 arms of the UPR.
 ################################################################################
 
 stopifnot(exists("MODULES"), exists("work"), exists("agg"), exists("SEED"),
           exists("ADJUST_DEPTH"), exists("pool_with_p"), exists("fmt_p"),
           exists("write_out"), exists("assert_run_state"), exists("log_msg"),
-          exists("bind"), exists("min_genes_for"))
-if (!exists("iso_con_pooled"))
-  stop("Section 24 needs section 15 (iso_con_pooled) in the same session for the safety check.")
+          exists("bind"), exists("min_genes_for"), exists("check_against_s15"))
 
 ## ============================================================================
 ## 24.0  SETTINGS
 ## ============================================================================
-UPR_DIR         <- file.path(PROJECT_ROOT, "data", "upr_sets")   # BRCA: folder of MSigDB TSVs
-UPR_OUTCOME     <- "P4HA1"
-UPR_REF         <- "ERstressStrict"
-UPR_OTHER       <- c("Hypoxia", "CollagenSynthesis", "iCAF", "ERAD")
-UPR_MIN_GENES   <- 8        # a set smaller than this cannot support a module score
-UPR_MIN_SPOTS   <- 30
-UPR_MIN_EVENTS  <- 70
+UPR_DIR          <- file.path(PROJECT_ROOT, "data", "upr_sets")
+UPR_OUTCOME      <- "P4HA1"
+UPR_REF          <- "ERstressStrict"
+UPR_OTHER        <- c("Hypoxia", "CollagenSynthesis", "iCAF", "ERAD")
+UPR_MIN_GENES    <- 8
+UPR_MIN_SPOTS    <- 30
+UPR_MIN_EVENTS   <- 70
 UPR_ADJUST_DEPTH <- ADJUST_DEPTH
-UPR_TOL         <- 1e-6
-UPR_COLLIN_WARN <- 0.50     # correlation with hypoxia above which to flag
-UPR_JACCARD_WARN <- 0.50    # overlap with the reference above which to flag
+UPR_COLLIN_WARN  <- 0.50
+UPR_JACCARD_WARN <- 0.50
+UPR_FAMILY_MAX   <- 0.05
 
 UPR_FAMILY <- c("P4HA1", "P4HA2", "P4HA3", "P4HB", "PLOD1", "PLOD2", "PLOD3", "PPIB")
 UPR_RENAME <- c(Hypoxia = "zHyp", CollagenSynthesis = "zCol", iCAF = "ziCAF", ERAD = "zERAD")
@@ -6443,10 +5788,10 @@ UPR_RHS <- paste0("zHyp * zCol + zHyp * zER + ziCAF + zERAD",
                   if (UPR_ADJUST_DEPTH) " + zDepth" else "")
 
 assert_run_state("Section 24")
+UPR_SECTIONS <- s15_fitted(UPR_OUTCOME)
 
 ## ============================================================================
 ## 24.1  READ THE CANDIDATE SETS FROM THE TSVs
-##       Gene lists are read from file, never typed.
 ## ============================================================================
 if (!dir.exists(UPR_DIR)) stop("Section 24 needs the folder ", UPR_DIR, " with MSigDB TSVs in it.")
 tsvs <- list.files(UPR_DIR, pattern = "\\.tsv$", full.names = TRUE, ignore.case = TRUE)
@@ -6461,7 +5806,7 @@ read_msigdb <- function(path) {
 }
 short_name <- function(path) {
   nm <- sub("\\.tsv$", "", basename(path), ignore.case = TRUE)
-  nm <- sub("\\.v[0-9].*$", "", nm)                 # drop the release suffix
+  nm <- sub("\\.v[0-9].*$", "", nm)
   nm <- sub("^HALLMARK_", "HALLMARK.", nm)
   nm <- sub("^GOBP_", "GO.", nm)
   nm <- sub("^REACTOME_", "REACT.", nm)
@@ -6482,21 +5827,15 @@ if (!length(raw_sets)) stop("Section 24: no usable gene set was read.")
 
 ## ============================================================================
 ## 24.2  AUDIT AND CLEAN
-##       Family genes are a hard stop. Genes shared with Hypoxia, collagen or
-##       iCAF are stripped: that is the VEGFA lesson from section 11.
+##       Family genes (e.g. P4HB) are stripped and named; a set made of more
+##       than UPR_FAMILY_MAX family genes is dropped. Genes shared with
+##       Hypoxia, collagen or iCAF are stripped.
 ## ============================================================================
 STRIP_AGAINST <- c("Hypoxia", "CollagenSynthesis", "iCAF")
 strip_pool <- unique(unlist(MODULES[STRIP_AGAINST], use.names = FALSE))
 ref_genes  <- MODULES[[UPR_REF]]
 
 jacc <- function(a, b) { u <- length(union(a, b)); if (u) length(intersect(a, b)) / u else NA_real_ }
-
-## A published ER-stress set may legitimately contain P4HB, the beta subunit of
-## P4HA1's own enzyme, or another family gene. Those genes are STRIPPED and
-## named, not tolerated. The set is dropped only if they make up more than
-## UPR_FAMILY_MAX of it, because then the set is built around them and removing
-## them changes what it measures: that was the GO:0034663 decision.
-UPR_FAMILY_MAX <- 0.05
 
 UPR_SETS <- list(); audit_rows <- list()
 for (nm in names(raw_sets)) {
@@ -6530,16 +5869,15 @@ for (nm in names(raw_sets)) {
 }
 audit <- bind(audit_rows)
 write_out(audit, "UPR_set_audit")
+if (!length(UPR_SETS)) stop("Section 24: every candidate set was dropped.")
 write_out(data.frame(set = rep(names(UPR_SETS), lengths(UPR_SETS)),
                      gene = unlist(UPR_SETS, use.names = FALSE)), "UPR_genes_used")
-if (!length(UPR_SETS)) stop("Section 24: every candidate set was dropped.")
 
-## the reference is fitted alongside, as the first variant
 UPR_VARIANTS <- c(UPR_REF, names(UPR_SETS))
-for (nm in names(UPR_SETS)) MODULES[[nm]] <- UPR_SETS[[nm]]   # left in place for section 19
+for (nm in names(UPR_SETS)) MODULES[[nm]] <- UPR_SETS[[nm]]   # left in place for section 25
 
 ## ============================================================================
-## 24.3  ONE TUMOUR: SCORE EVERYTHING ONCE
+## 24.3  ONE SECTION: SCORE EVERYTHING ONCE
 ## ============================================================================
 upr_one <- function(rds_path, sid) {
   obj <- readRDS(rds_path)
@@ -6552,7 +5890,7 @@ upr_one <- function(rds_path, sid) {
     if (length(g) < min_genes_for(gset)) return(NULL)
     set.seed(SEED)
     o <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
-                                 assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
+                                            assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
                   error = function(e) NULL)
     if (is.null(o) || !paste0(nm, "1") %in% colnames(o@meta.data)) return(NULL)
     names(o@meta.data)[names(o@meta.data) == paste0(nm, "1")] <- nm
@@ -6582,12 +5920,12 @@ upr_one <- function(rds_path, sid) {
   for (nm in UPR_OTHER) { v <- zz(d[[nm]]); if (is.null(v)) return(NULL); d[[ UPR_RENAME[[nm]] ]] <- v }
   if (UPR_ADJUST_DEPTH) { v <- zz(log1p(d[[cnt_col[1]]])); if (is.null(v)) return(NULL); d$zDepth <- v }
   
-  ## diagnostics on the raw scores
   sp <- function(a, b) suppressWarnings(cor(a, b, method = "spearman"))
+  ref_col <- paste0("UPRv_", UPR_REF)
   attr(d, "diag") <- do.call(rbind, lapply(have, function(v) data.frame(
     sample_id = sid, variant = v,
     rho_vs_hypoxia = sp(d[[paste0("UPRv_", v)]], d$Hypoxia),
-    rho_vs_ref     = sp(d[[paste0("UPRv_", v)]], d[[paste0("UPRv_", UPR_REF)]]),
+    rho_vs_ref     = if (ref_col %in% names(d)) sp(d[[paste0("UPRv_", v)]], d[[ref_col]]) else NA_real_,
     row.names = NULL)))
   attr(d, "have") <- have
   d
@@ -6635,6 +5973,7 @@ upr_acc <- list(fit = list(), diag = list())
 for (i in seq_len(nrow(work))) {
   path <- work$path[i]; sid <- work$sample_id[i]
   if (is.na(path) || !file.exists(path)) next
+  if (!sid %in% UPR_SECTIONS) next
   log_msg("[upr %d/%d] %s", i, nrow(work), sid)
   d <- tryCatch(upr_one(path, sid),
                 error = function(e) { log_msg("  upr skipped: %s", conditionMessage(e)); NULL })
@@ -6652,23 +5991,17 @@ if (nrow(upr_all) == 0) stop("Section 24: nothing was fitted.")
 write_out(upr_all,  "UPR_per_sample")
 write_out(upr_diag, "UPR_diagnostics_per_sample")
 
-upr_pooled <- upr_all %>%
+## ============================================================================
+## 24.6  SAFETY CHECK (reference vs section 15, section by section)
+## ============================================================================
+check_against_s15(upr_all[upr_all$variant == UPR_REF, ], UPR_OUTCOME, "Section 24")
+
+## every set pooled on the sections where the reference was fitted
+upr_secs <- unique(upr_all$sample_id[upr_all$variant == UPR_REF])
+upr_pooled <- upr_all[upr_all$sample_id %in% upr_secs, ] %>%
   group_by(variant) %>% group_modify(~ pool_with_p(.x$est, .x$var, .x$sample_id)) %>% ungroup()
 write_out(upr_pooled, "UPR_pooled")
-
-## ============================================================================
-## 24.6  SAFETY CHECK
-## ============================================================================
 refr <- upr_pooled[upr_pooled$variant == UPR_REF, ]
-ref15 <- iso_con_pooled[iso_con_pooled$outcome == UPR_OUTCOME &
-                          iso_con_pooled$contrast == "interaction_diff", ]$est
-cat("\n", strrep("=", 74), "\n", sep = "")
-cat("SECTION 24.6  SAFETY CHECK\n")
-cat(strrep("=", 74), "\n", sep = "")
-cat(sprintf("  %s = %+.6f   section 15 = %+.6f\n", UPR_REF, refr$est, ref15))
-if (!nrow(refr) || abs(refr$est - ref15) > UPR_TOL)
-  stop("Section 24 halted: the reference module does not reproduce section 15.")
-cat("  PASSED\n")
 
 ## ============================================================================
 ## 24.7  REPORT
@@ -6681,21 +6014,21 @@ cat(sprintf("SECTION 24  [%s]  run_id %s\n",
             if (UPR_ADJUST_DEPTH) "DEPTH ADJUSTED" else "UNADJUSTED", RUN_ID))
 cat(strrep("=", 74), "\n", sep = "")
 
-cat("\n--- diagnostics, read these before the estimates ---\n")
+cat(sprintf("\n--- diagnostics, read these before the estimates (medians over %ss) ---\n", UNIT_LABEL))
 cat(sprintf("  %-34s %10s %12s %12s\n", "set", "Jaccard", "rho hypoxia", "rho with ref"))
 for (v in UPR_VARIANTS) {
   dg <- upr_diag[upr_diag$variant == v, ]
   jc <- if (identical(v, UPR_REF)) 1 else audit$jaccard_with_ref[audit$set == v]
   if (!nrow(dg)) next
-  mh <- median(dg$rho_vs_hypoxia, na.rm = TRUE); mr <- median(dg$rho_vs_ref, na.rm = TRUE)
-  cat(sprintf("  %-34s %10.2f %12+.2f %12+.2f%s%s\n", v, jc, mh, mr,
-              if (abs(mh) >= UPR_COLLIN_WARN) "  <-- tracks hypoxia" else "",
+  mh <- unit_median(dg$rho_vs_hypoxia, dg$sample_id); mr <- unit_median(dg$rho_vs_ref, dg$sample_id)
+  ## v5: standard flag order ("%+12.2f")
+  cat(sprintf("  %-34s %10.2f %+12.2f %+12.2f%s%s\n", v, jc, mh, mr,
+              if (is.finite(mh) && abs(mh) >= UPR_COLLIN_WARN) "  <-- tracks hypoxia" else "",
               if (!identical(v, UPR_REF) && is.finite(jc) && jc >= UPR_JACCARD_WARN)
                 "  <-- not independent" else ""))
 }
-cat("\n  Jaccard is overlap with the reference module AFTER stripping. A set with\n")
-cat("  high overlap is the same instrument again; its agreement is not evidence.\n")
-cat("  A set that tracks hypoxia can manufacture the interaction being tested.\n")
+cat("\n  Jaccard = overlap with the reference module AFTER stripping. A set that\n")
+cat("  tracks hypoxia can manufacture the interaction being tested.\n")
 
 cat("\n--- THE HEADLINE: slope difference under each definition of ER stress ---\n")
 cat(sprintf("  %-34s %9s %21s %5s %11s\n", "set", "estimate", "95% CI", "k", "p"))
@@ -6703,13 +6036,13 @@ for (v in UPR_VARIANTS) {
   r <- upr_pooled[upr_pooled$variant == v, ]
   if (!nrow(r)) next
   cat(sprintf("  %-34s %+9.4f  %+8.4f to %+8.4f %5d %10s%s%s\n",
-              v, r$est, r$lower, r$upper, r$k, fmt_p(r$p),
+              v, r$est, r$lower, r$upper, as.integer(r$k), fmt_p(r$p),
               if (identical(v, UPR_REF)) "   [reference]" else "",
               if (!identical(v, UPR_REF) && excl0(r$lower, r$upper) == ref_sig &&
                   sign(r$est) == sign(refr$est)) "   agrees" else ""))
 }
 
-## ---- verdict ---------------------------------------------------------------
+UPR_VERDICT <- NA_character_
 cand <- upr_pooled[upr_pooled$variant != UPR_REF, ]
 if (nrow(cand)) {
   indep <- audit$set[audit$used & is.finite(audit$jaccard_with_ref) &
@@ -6725,35 +6058,31 @@ if (nrow(cand)) {
   cat(sprintf("  independent sets tested (Jaccard < %.2f): %d\n", UPR_JACCARD_WARN, nrow(ci)))
   cat(sprintf("  same direction as the reference          : %d\n", length(same_dir)))
   cat(sprintf("  same direction AND excluding zero        : %d\n", length(agree)))
-  if (length(agree) >= 2) {
+  if (!ref_sig) {
+    UPR_VERDICT <- "reference not significant"
+    cat("\n  The reference module itself does not exclude zero in this cohort, so\n")
+    cat("  there is no result for other definitions to reproduce.\n")
+  } else if (length(agree) >= 2) {
+    UPR_VERDICT <- "replicated"
     cat("\n  THE DEFINITION IS NOT THE RESULT. Several independently published\n")
-    cat("  definitions of ER stress give the same answer, so the finding is not a\n")
-    cat("  property of the hand-built module. This is the strongest available\n")
-    cat("  answer to the coherence problem in section 19.\n")
+    cat("  definitions of ER stress give the same answer.\n")
   } else if (length(same_dir) >= 2) {
-    cat("\n  PARTIAL. The independent sets point the same way but not all of them\n")
-    cat("  exclude zero. Say exactly that: consistent in direction, weaker in\n")
-    cat("  precision, and the hand-built module remains the primary definition.\n")
+    UPR_VERDICT <- "same direction only"
+    cat("\n  PARTIAL. The independent sets point the same way but not all exclude\n")
+    cat("  zero: consistent in direction, weaker in precision.\n")
   } else {
+    UPR_VERDICT <- "not replicated"
     cat("\n  *** THE RESULT IS SPECIFIC TO THE HAND-BUILT MODULE. Independent\n")
-    cat("  definitions of ER stress do not reproduce it. The claim must be\n")
-    cat("  rewritten around what that module actually measures, and the\n")
-    cat("  coherence failure in section 19 now matters a great deal more. ***\n")
+    cat("  definitions of ER stress do not reproduce it. ***\n")
   }
-  cat("\n  If the three UPR arms disagree with each other, that is a biological\n")
-  cat("  result rather than a robustness check: name which arm carries it.\n")
+  cat("\n  If the IRE1 / PERK / ATF6 arms disagree, that is a biological result:\n")
+  cat("  name which arm carries it.\n")
 }
 
 cat("\nCAVEATS\n")
-cat("  Only P4HA1 was refitted.\n")
-cat("  Any set containing P4HB or another hydroxylase-family gene had it removed;\n")
-cat("  UPR_set_audit names them. A set built around such genes was dropped.\n")
-cat("  Sets were stripped of genes shared with Hypoxia, collagen and iCAF, so\n")
-cat("  they are not the published sets as-is. The stripped genes are listed in\n")
-cat("  UPR_set_audit.\n")
-cat("  Coherence was not tested here. Add the set names to COH_MODULES in\n")
-cat("  section 19 and re-run it to get that.\n")
-cat("  Model p values remain inflated by spatial autocorrelation.\n")
+cat("  Only P4HA1 was refitted. Sets were stripped of hydroxylase-family genes\n")
+cat("  and of genes shared with Hypoxia, collagen and iCAF (see UPR_set_audit),\n")
+cat("  so they are not the published sets as-is. Section 25 tests their coherence.\n")
 cat(strrep("=", 74), "\n", sep = "")
 
 log_msg("Section 24 complete.")
@@ -6761,56 +6090,35 @@ log_msg("Section 24 complete.")
 ################################################################################
 ## 25. ARE THE PUBLISHED ER-STRESS SETS ANY MORE COHERENT THAN OURS?
 ##
-##   BRCA NOTE: the reasoning in this header was written for the PDAC
-##   cohort. Any statement about what the data showed, which module worked,
-##   or how many tumours were usable describes PDAC, not BRCA. The code
-##   below is unchanged except where tagged "BRCA:".
-##
-##   WHY THIS MATTERS NOW
-##   Section 19 found ERstressStrict is no more internally consistent than
-##   random genes of the same size and detection rate. Section 24 then showed
-##   five independent definitions of ER stress give the same result anyway.
-##   That leaves one question: are those five definitions coherent?
-##
-##     If they are also incoherent, then incoherence is a property of
-##     ER-stress gene sets in Visium data, not a flaw in a hand-built module.
-##     The sentence for the paper becomes much easier to write.
-##
-##     If they ARE coherent while ours is not, then ours is the weak one, and
-##     the primary definition should probably change to a published set that
-##     both coheres and reproduces the result.
-##
-##   METHOD
-##   Identical to section 19: mean pairwise Spearman between member genes, and
-##   the variance share of PC1, each compared against 30 random gene sets
-##   matched on size and detection rate, reported as a percentile.
-##
-##   WHY THE NUMBERS WILL NOT MATCH SECTION 19 EXACTLY
-##   The null pool excludes every gene belonging to any module under test, and
-##   this run tests a different list, so the pool differs and the random sets
-##   differ. Hypoxia and collagen are included as positive controls and must
-##   still land high; that is the gate, not exact reproduction.
-##
-##   Run after the main pipeline AND section 24 in the same session, because it
-##   needs the UPR sets that section 24 put into MODULES.
+##   Same method as section 19, applied to the reference modules, our
+##   ERstressStrict and every UPR set section 24 read. If no ER-stress
+##   definition is coherent, incoherence is a property of ER-stress gene sets
+##   in Visium data, not of the hand-built module. If published sets cohere
+##   and ours does not, ours is the weak one.
+##   The null pool differs from section 19 (different modules are excluded),
+##   so percentiles are not directly comparable; hypoxia and collagen are
+##   included as positive controls and must still land high.
+##   Needs section 24 in the same session (UPR_SETS).
 ################################################################################
 
 stopifnot(exists("MODULES"), exists("work"), exists("agg"),
           exists("write_out"), exists("assert_run_state"), exists("log_msg"), exists("bind"))
 if (!exists("UPR_SETS"))
   stop("Section 25 needs section 24 to have run in this session (UPR_SETS not found).")
+if (!exists("coh_meanrho") || !exists("coh_pc1") || !exists("COH_COLS"))
+  stop("Section 25 needs section 19 to have run in this session (coherence functions not found).")
 
 ## ============================================================================
 ## 25.0  SETTINGS
 ## ============================================================================
-UC_REFS     <- c("Hypoxia", "CollagenSynthesis", "ERstressStrict", "ERAD")
-UC_MODULES  <- c(UC_REFS, names(UPR_SETS))
-UC_N_NULL   <- 30
+UC_REFS      <- c("Hypoxia", "CollagenSynthesis", "ERstressStrict", "ERAD")
+UC_MODULES   <- c(UC_REFS, names(UPR_SETS))
+UC_N_NULL    <- 30
 UC_MIN_GENES <- 4
 UC_MIN_SPOTS <- 30
-UC_SEED     <- 90125
-UC_CALIPER  <- 0.35
-UC_PCT_MIN  <- 0.90
+UC_SEED      <- 90125
+UC_CALIPER   <- 0.35
+UC_PCT_MIN   <- 0.90
 
 RATES_CSV <- file.path(agg, "DETECT_cohort_gene_rates.csv")
 if (!file.exists(RATES_CSV)) stop("Section 25 needs DETECT_cohort_gene_rates.csv from section 14.")
@@ -6824,8 +6132,6 @@ if (length(miss)) stop("Not in MODULES: ", paste(miss, collapse = ", "))
 ## 25.1  NULL POOL, MATCHED ON DETECTION RATE
 ## ============================================================================
 rates <- read.csv(RATES_CSV, stringsAsFactors = FALSE)
-## BRCA: gene pool from the sections where P4HA1 can be modelled, as in 16.1,
-## so one near-empty section cannot remove genes from the pool
 if (exists("RND_SECTIONS")) rates <- rates[rates$sample_id %in% RND_SECTIONS, , drop = FALSE]
 gene_med <- rates %>%
   group_by(gene) %>%
@@ -6838,8 +6144,8 @@ uc_pool <- gene_med[!gene_med$gene %in% UC_ALL_GENES, ]
 cat("\n", strrep("=", 74), "\n", sep = "")
 cat("SECTION 25.1  SETUP\n")
 cat(strrep("=", 74), "\n", sep = "")
-cat(sprintf("  genes present in all tumours : %d\n", nrow(gene_med)))
-cat(sprintf("  null pool after exclusions   : %d\n", nrow(uc_pool)))
+cat(sprintf("  genes present in all sections : %d\n", nrow(gene_med)))
+cat(sprintf("  null pool after exclusions    : %d\n", nrow(uc_pool)))
 for (nm in UC_MODULES) {
   det <- intersect(MODULES[[nm]], gene_med$gene)
   cat(sprintf("    %-34s %3d genes, %3d detected cohort-wide\n",
@@ -6863,30 +6169,7 @@ for (nm in UC_MODULES)
     cat(sprintf("  *** %s: could not match null sets, it will be skipped ***\n", nm))
 
 ## ============================================================================
-## 25.2  THE TWO MEASURES  (same as section 19)
-## ============================================================================
-uc_rho <- function(mat) {
-  if (is.null(mat) || nrow(mat) < UC_MIN_GENES) return(NA_real_)
-  keep <- apply(mat, 1, function(v) sd(v) > 0)
-  if (sum(keep) < UC_MIN_GENES) return(NA_real_)
-  cc <- suppressWarnings(cor(t(as.matrix(mat[keep, , drop = FALSE])), method = "spearman"))
-  if (!is.matrix(cc)) return(NA_real_)
-  mean(cc[upper.tri(cc)], na.rm = TRUE)
-}
-uc_pc1 <- function(mat) {
-  if (is.null(mat) || nrow(mat) < UC_MIN_GENES) return(NA_real_)
-  keep <- apply(mat, 1, function(v) sd(v) > 0)
-  if (sum(keep) < UC_MIN_GENES) return(NA_real_)
-  m <- scale(t(as.matrix(mat[keep, , drop = FALSE])))
-  m <- m[, apply(m, 2, function(v) all(is.finite(v))), drop = FALSE]
-  if (ncol(m) < UC_MIN_GENES) return(NA_real_)
-  ev <- tryCatch(svd(m, nu = 0, nv = 0)$d^2, error = function(e) NULL)
-  if (is.null(ev) || !length(ev)) return(NA_real_)
-  ev[1] / sum(ev)
-}
-
-## ============================================================================
-## 25.3  RUN
+## 25.2  RUN  (the two measures are the section 19 functions)
 ## ============================================================================
 uc_one <- function(rds_path, sid) {
   obj <- readRDS(rds_path)
@@ -6898,23 +6181,23 @@ uc_one <- function(rds_path, sid) {
   if (is.null(E) || !nrow(E)) return(NULL)
   rn <- rownames(E)
   grab <- function(g) { g <- intersect(g, rn); if (length(g) < UC_MIN_GENES) NULL else E[g, , drop = FALSE] }
-
+  
   rows <- list()
   for (nm in UC_MODULES) {
     ns <- UC_NULLS[[nm]]; if (is.null(ns)) next
     real <- grab(MODULES[[nm]]); if (is.null(real)) next
-    r_rho <- uc_rho(real); r_pc1 <- uc_pc1(real)
+    r_rho <- coh_meanrho(real); r_pc1 <- coh_pc1(real)
     n_rho <- n_pc1 <- rep(NA_real_, length(ns))
     for (j in seq_along(ns)) {
       mm <- grab(ns[[j]]); if (is.null(mm)) next
-      n_rho[j] <- uc_rho(mm); n_pc1[j] <- uc_pc1(mm)
+      n_rho[j] <- coh_meanrho(mm); n_pc1[j] <- coh_pc1(mm)
     }
     pr <- if (sum(is.finite(n_rho)) >= 10) mean(n_rho[is.finite(n_rho)] < r_rho) else NA_real_
     pp <- if (sum(is.finite(n_pc1)) >= 10) mean(n_pc1[is.finite(n_pc1)] < r_pc1) else NA_real_
     rows[[length(rows) + 1]] <- data.frame(
       sample_id = sid, module = nm, n_genes_used = nrow(real),
       mean_rho = r_rho, pc1_var = r_pc1,
-      null_rho = median(n_rho, na.rm = TRUE), null_pc1 = median(n_pc1, na.rm = TRUE),
+      null_mean_rho = median(n_rho, na.rm = TRUE), null_pc1 = median(n_pc1, na.rm = TRUE),
       pct_rho = pr, pct_pc1 = pp, row.names = NULL)
   }
   if (!length(rows)) return(NULL)
@@ -6935,11 +6218,16 @@ uc_all <- bind(uc_acc)
 if (nrow(uc_all) == 0) stop("Section 25: nothing computed.")
 write_out(uc_all, "UPRCOH_per_sample")
 
-uc_sum <- uc_all %>%
+## one value per unit, then the median over units (v5, C4)
+uc_unit <- uc_all %>%
+  mutate(unit = unit_of(sample_id)) %>%
+  group_by(module, unit) %>%
+  summarise(across(all_of(COH_COLS), ~ mean(.x, na.rm = TRUE)), .groups = "drop")
+uc_sum <- uc_unit %>%
   group_by(module) %>%
   summarise(k = dplyr::n(), median_genes = median(n_genes_used),
             median_rho = median(mean_rho, na.rm = TRUE),
-            median_null_rho = median(null_rho, na.rm = TRUE),
+            median_null_rho = median(null_mean_rho, na.rm = TRUE),
             median_pct_rho = median(pct_rho, na.rm = TRUE),
             median_pc1 = median(pc1_var, na.rm = TRUE),
             median_null_pc1 = median(null_pc1, na.rm = TRUE),
@@ -6949,127 +6237,92 @@ uc_sum <- uc_sum[!is.na(uc_sum$module), ]
 write_out(uc_sum, "UPRCOH_summary")
 
 ## ============================================================================
-## 25.4  REPORT
+## 25.3  REPORT
 ## ============================================================================
 cat("\n", strrep("=", 74), "\n", sep = "")
 cat(sprintf("SECTION 25  COHERENCE OF THE PUBLISHED ER-STRESS SETS  run_id %s\n", RUN_ID))
 cat(strrep("=", 74), "\n", sep = "")
-cat(sprintf("\n  %-34s %6s %8s %9s %9s %8s %9s\n",
-            "module", "genes", "rho", "null rho", "pctile", "PC1", "pctile"))
+cat(sprintf("\n  %-34s %4s %6s %8s %9s %9s %8s %9s\n",
+            "module", "k", "genes", "rho", "null rho", "pctile", "PC1", "pctile"))
 for (i in seq_len(nrow(uc_sum))) with(uc_sum[i, ],
-  cat(sprintf("  %-34s %6.0f %8.3f %9.3f %8.0f%% %8.3f %8.0f%%\n",
-              module, median_genes, median_rho, median_null_rho, 100 * median_pct_rho,
-              median_pc1, 100 * median_pct_pc1)))
+                                      cat(sprintf("  %-34s %4d %6.0f %8.3f %9.3f %8.0f%% %8.3f %8.0f%%\n",
+                                                  module, as.integer(k), median_genes, median_rho, median_null_rho, 100 * median_pct_rho,
+                                                  median_pc1, 100 * median_pct_pc1)))
 
-passes <- function(mod) {
+uc_passes <- function(mod) {
   r <- uc_sum[uc_sum$module == mod, ]
-  if (!nrow(r)) return(NA)
+  if (!nrow(r)) return(FALSE)
   isTRUE(r$median_pct_rho >= UC_PCT_MIN) || isTRUE(r$median_pct_pc1 >= UC_PCT_MIN)
 }
 cat(sprintf("\n  criterion: median percentile >= %.0f%% on either measure\n\n", 100 * UC_PCT_MIN))
 for (nm in uc_sum$module)
-  cat(sprintf("    %-34s %s\n", nm, if (isTRUE(passes(nm))) "COHERENT" else "not coherent"))
+  cat(sprintf("    %-34s %s\n", nm, if (uc_passes(nm)) "COHERENT" else "not coherent"))
 
-## ---- gate: the positive controls must behave ------------------------------
-ctrl_ok <- isTRUE(passes("Hypoxia")) || isTRUE(passes("CollagenSynthesis"))
+ctrl_ok_25 <- uc_passes("Hypoxia") || uc_passes("CollagenSynthesis")
 cat("\n", strrep("-", 74), "\n", sep = "")
 cat("  VERDICT\n")
 cat(strrep("-", 74), "\n", sep = "")
-if (!ctrl_ok) {
+if (!ctrl_ok_25) {
   cat("  The positive controls failed in this run, so nothing here is readable.\n")
-  cat("  Collagen and hypoxia both passed in section 19, so if they fail here the\n")
-  cat("  null pool or the matching is at fault, not the candidate sets.\n")
+  if (exists("coh_sum")) {
+    s19 <- vapply(c("Hypoxia", "CollagenSynthesis"), passes, logical(1))
+    cat(sprintf("  In section 19: hypoxia %s, collagen %s.%s\n",
+                if (s19[1]) "coherent" else "not coherent", if (s19[2]) "coherent" else "not coherent",
+                if (any(s19)) " So the null pool or matching here is at fault, not the candidate sets." else ""))
+  }
 } else {
   upr_names <- names(UPR_SETS)
-  coh <- upr_names[vapply(upr_names, function(x) isTRUE(passes(x)), logical(1))]
-  ours <- isTRUE(passes("ERstressStrict"))
+  coh  <- upr_names[vapply(upr_names, uc_passes, logical(1))]
+  ours <- uc_passes("ERstressStrict")
   cat(sprintf("  our module (ERstressStrict) : %s\n", if (ours) "COHERENT" else "not coherent"))
   cat(sprintf("  published sets coherent     : %d of %d\n", length(coh), length(upr_names)))
+  s24 <- if (exists("UPR_VERDICT")) UPR_VERDICT else NA_character_
   if (!ours && !length(coh)) {
-    cat("\n  NO ER-STRESS DEFINITION IS COHERENT IN THIS DATA.\n")
-    cat("  Ours is not unusual: every published set behaves like random genes of\n")
-    cat("  the same size and detection rate, while collagen and hypoxia pass\n")
-    cat("  cleanly. So incoherence is a property of ER-stress gene sets in Visium\n")
-    cat("  data, not a defect of the hand-built module.\n")
-    cat("  For the paper: the ER stress score is a composite readout rather than a\n")
-    cat("  measure of one coordinated transcriptional programme, and that is true\n")
-    cat("  of every published definition tested, all of which give the same result\n")
-    cat("  (section 24).\n")
+    cat("\n  NO ER-STRESS DEFINITION IS COHERENT IN THIS DATA, while at least one\n")
+    cat("  positive control is. Incoherence is then a property of ER-stress gene\n")
+    cat("  sets in Visium data, not a defect of the hand-built module: the score is\n")
+    cat("  a composite readout, not one coordinated programme.\n")
+    cat(sprintf("  Section 24 verdict on whether the definitions agree: %s.\n",
+                if (is.na(s24)) "not available" else s24))
   } else if (!ours && length(coh)) {
     cat(sprintf("\n  *** SOME PUBLISHED SETS COHERE AND OURS DOES NOT: %s ***\n",
                 paste(coh, collapse = ", ")))
-    cat("  Those sets both cohere and reproduce the result. The primary definition\n")
-    cat("  should probably move to one of them, with the hand-built module kept as\n")
-    cat("  a sensitivity analysis. Decide this with Valerio before writing.\n")
+    cat(sprintf("  Section 24 verdict: %s. If those sets also reproduce the result, the\n",
+                if (is.na(s24)) "not available" else s24))
+    cat("  primary definition should probably move to one of them, with the hand-\n")
+    cat("  built module kept as a sensitivity analysis.\n")
   } else {
-    cat("\n  Our module coheres in this run. Check why it differed from section 19\n")
-    cat("  before using either number: the null pool is not the same.\n")
+    cat("\n  Our module coheres in this run. Compare with section 19 before using\n")
+    cat("  either number: the null pool is not the same.\n")
   }
 }
 
 cat("\nCAVEATS\n")
-cat("  Percentiles are not directly comparable to section 19: the null pool\n")
-cat("  excludes a different set of genes, so the random sets differ.\n")
-cat("  Coherence is necessary for a module score to mean one thing. It is not\n")
+cat("  Coherence is necessary for a module score to mean one thing, not\n")
 cat("  sufficient, and its absence does not by itself invalidate a result that\n")
-cat("  replicates across tumours, gene sets and definitions.\n")
+cat("  replicates across patients, gene sets and definitions.\n")
 cat(strrep("=", 74), "\n", sep = "")
 
 log_msg("Section 25 complete.")
+
 ################################################################################
 ## 26. SPATIAL PERMUTATION TEST
 ##
-##   BRCA NOTE: the reasoning in this header was written for the PDAC
-##   cohort. Any statement about what the data showed, which module worked,
-##   or how many tumours were usable describes PDAC, not BRCA. The code
-##   below is unchanged except where tagged "BRCA:".
-##
-##   THE WORRY
-##   Neighbouring spots are not independent. The logistic model treats every
-##   spot as a separate observation, so its confidence intervals and p values
-##   are too optimistic (section 16 in PDAC: 296 of 1000 random genes were
-##   "significant"). Section 16 answers "is P4HA1 special among genes".
-##   It does not answer "is the P4HA1 estimate larger than what spatial
-##   structure alone produces". This section does.
-##
-##   WHAT THIS DOES
-##   For every tumour the map of P4HA1 detection is moved as one rigid sheet
-##   over the tissue (a random shift on the Visium grid with wrap-around, and
-##   a random 180 degree turn). The patches of P4HA1 stay patches, so the
-##   spatial structure of the outcome is kept, but they no longer sit on their
-##   true positions, so any real link with hypoxia, collagen and ER stress is
-##   broken. The predictors are not touched. The section 15 model is refitted
-##   on the moved map and pooled over tumours exactly as in section 15.
-##   Repeating this SP_N_PERM times gives the distribution of the pooled slope
-##   difference under "no real link, same spatial structure".
-##
-##   Where the moved sheet falls outside the tissue, the value of the nearest
-##   tissue spot is used. The share of spots filled this way is reported.
-##
-##   THE CHECK THAT MAKES IT READABLE
-##   The unpermuted fit MUST reproduce the section 15 P4HA1 estimate to six
-##   decimals, otherwise the section stops.
-##
-##   HOW TO READ IT
-##   Observed estimate beyond almost all permuted ones -> the result is larger
-##        than spatial structure alone produces. Report the empirical p.
-##   Observed estimate inside the permuted ones        -> the result cannot be
-##        told apart from spatial structure. Say so plainly.
-##
-##   LIMITS
-##   Wrap-around creates a seam and nearest-spot filling repeats some values,
-##   so the kept spatial structure is approximate, not exact.
-##   The smallest possible empirical p is 1 / (SP_N_PERM + 1).
-##
-##   Run after the main pipeline in the same FRESH session.
+##   Neighbouring spots are not independent, so model CIs are too optimistic.
+##   For every section the map of P4HA1 detection is moved as one rigid sheet
+##   (a random shift on the Visium grid with wrap-around, and a random 180
+##   degree turn). Patches stay patches, but no longer sit on their true
+##   positions, so any real link with the predictors is broken. The section
+##   15 model is refitted and pooled exactly as in section 15. Repeating this
+##   SP_N_PERM times gives the null distribution of the pooled slope
+##   difference under "same spatial structure, no real link".
+##   The unpermuted fit on all spots must reproduce section 15, section by
+##   section. The smallest possible empirical p is 1 / (SP_N_PERM + 1).
 ################################################################################
 
 stopifnot(exists("MODULES"), exists("work"), exists("SEED"), exists("ADJUST_DEPTH"),
           exists("meta_pool"), exists("write_out"), exists("assert_run_state"),
-          exists("log_msg"), exists("min_genes_for"))
-if (!exists("iso_con_pooled"))
-  stop("Section 26 needs section 15 (iso_con_pooled) in the same session for the safety check.")
-suppressPackageStartupMessages(library(Seurat))
+          exists("log_msg"), exists("min_genes_for"), exists("check_against_s15"))
 
 ## ============================================================================
 ## 26.0  SETTINGS
@@ -7077,7 +6330,7 @@ suppressPackageStartupMessages(library(Seurat))
 SP_OUTCOME      <- "P4HA1"
 SP_N_PERM       <- 1000
 SP_SEED         <- 20261005
-SP_PROBE        <- 20          # permutations timed first, to print an estimate
+SP_PROBE        <- 20
 SP_MIN_SHIFT    <- 10          # smallest allowed move, in spot spacings
 SP_MODS         <- c("Hypoxia", "CollagenSynthesis", "ERstressStrict", "iCAF", "ERAD")
 SP_RENAME       <- c(Hypoxia = "zHyp", CollagenSynthesis = "zCol", ERstressStrict = "zER",
@@ -7085,7 +6338,6 @@ SP_RENAME       <- c(Hypoxia = "zHyp", CollagenSynthesis = "zCol", ERstressStric
 SP_MIN_SPOTS    <- 30
 SP_MIN_EVENTS   <- 70
 SP_ADJUST_DEPTH <- ADJUST_DEPTH
-SP_TOL          <- 1e-6
 SP_II_COL       <- "zHyp:zCol"
 SP_II_ER        <- "zHyp:zER"
 SP_RHS <- paste0("zHyp * zCol + zHyp * zER + ziCAF + zERAD",
@@ -7094,14 +6346,16 @@ SP_RHS <- paste0("zHyp * zCol + zHyp * zER + ziCAF + zERAD",
 assert_run_state("Section 26")
 for (m in SP_MODS) if (SP_OUTCOME %in% MODULES[[m]])
   stop("Section 26 halted: ", SP_OUTCOME, " is inside ", m)
+SP_SECTIONS <- s15_fitted(SP_OUTCOME)
 
 cat("\n", strrep("=", 74), "\n", sep = "")
 cat("SECTION 26  SPATIAL PERMUTATION TEST\n")
 cat(strrep("=", 74), "\n", sep = "")
-cat(sprintf("  outcome %s, %d permutations, seed %d\n", SP_OUTCOME, SP_N_PERM, SP_SEED))
+cat(sprintf("  outcome %s, %d permutations, seed %d, %d sections\n",
+            SP_OUTCOME, SP_N_PERM, SP_SEED, length(SP_SECTIONS)))
 
 ## ============================================================================
-## 26.1  ONE TUMOUR: SCORES, OUTCOME AND GRID POSITION OF EVERY SPOT
+## 26.1  ONE SECTION: SCORES, OUTCOME AND GRID POSITION OF EVERY SPOT
 ## ============================================================================
 sp_load <- function(rds_path, sid) {
   obj <- readRDS(rds_path)
@@ -7116,7 +6370,7 @@ sp_load <- function(rds_path, sid) {
     }
     set.seed(SEED)
     obj <- tryCatch(add_module_score_fallback(obj, features = list(g), name = nm,
-                                   assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
+                                              assay = DefaultAssay(obj), nbin = 20, ctrl = 50),
                     error = function(e) NULL)
     if (is.null(obj) || !paste0(nm, "1") %in% colnames(obj@meta.data)) return(NULL)
     names(obj@meta.data)[names(obj@meta.data) == paste0(nm, "1")] <- nm
@@ -7133,7 +6387,8 @@ sp_load <- function(rds_path, sid) {
   if (SP_ADJUST_DEPTH) { v <- zz(log1p(d[[cnt_col[1]]])); if (is.null(v)) return(NULL); d$zDepth <- v }
   d$y <- as.integer(d[[SP_OUTCOME]] > 0)
   
-  ## grid position (Visium array row and col), matched by barcode
+  ## Visium array row and col, matched by barcode. Spots without a position
+  ## are kept here (NA) so the safety check uses exactly section 15's spots.
   im <- Images(obj)
   if (!length(im)) { log_msg("  %s: no image -> skipped", sid); return(NULL) }
   co <- tryCatch(obj@images[[im[1]]]@coordinates, error = function(e) NULL)
@@ -7141,8 +6396,6 @@ sp_load <- function(rds_path, sid) {
     log_msg("  %s: no row/col grid coordinates -> skipped", sid); return(NULL)
   }
   idx <- match(rownames(d), rownames(co))
-  ## spots without a grid position are KEPT here (grow = NA) so that the safety
-  ## check can use exactly the spots section 15 used; they are set aside later
   d$grow <- as.integer(co$row[idx]); d$gcol <- as.integer(co$col[idx])
   if (any((d$grow + d$gcol) %% 2L != 0L, na.rm = TRUE))
     stop("Section 26, ", sid, ": row + col is not even for every spot. The grid is not the ",
@@ -7163,7 +6416,6 @@ sp_contrast <- function(b, V) {
 sp_usable <- function(y) {
   ev <- sum(y); length(y) >= SP_MIN_SPOTS && ev >= SP_MIN_EVENTS && (length(y) - ev) >= SP_MIN_EVENTS
 }
-## observed fit: plain glm, identical to section 15
 sp_fit_obs <- function(d) {
   if (!sp_usable(d$y)) return(NULL)
   f <- tryCatch(glm(as.formula(paste("y ~", SP_RHS)), data = d, family = binomial()),
@@ -7171,7 +6423,6 @@ sp_fit_obs <- function(d) {
   if (is.null(f) || !f$converged) return(NULL)
   sp_contrast(coef(f), vcov(f))
 }
-## permuted fit: same model through glm.fit on a prebuilt design matrix (fast)
 sp_fit_fast <- function(X, y) {
   if (!sp_usable(y)) return(NULL)
   fg <- tryCatch(suppressWarnings(glm.fit(X, y, family = binomial())), error = function(e) NULL)
@@ -7185,26 +6436,22 @@ sp_fit_fast <- function(X, y) {
 }
 
 ## ============================================================================
-## 26.3  THE GRID OF ONE TUMOUR AND THE MOVE
+## 26.3  THE GRID OF ONE SECTION AND THE MOVE
 ## ============================================================================
-## For every grid cell, the index of the nearest tissue spot (itself if the
-## cell is a tissue spot). Built once per tumour; a permutation is then a lookup.
 sp_grid <- function(d) {
-  R <- max(d$grow) + 1L; if (R %% 2L) R <- R + 1L        # even sizes keep the
-  C <- max(d$gcol) + 1L; if (C %% 2L) C <- C + 1L        # hex parity under wrap
-  sx <- d$gcol * 0.5; sy <- d$grow * sqrt(3) / 2         # physical position, spot spacing = 1
+  R <- max(d$grow) + 1L; if (R %% 2L) R <- R + 1L
+  C <- max(d$gcol) + 1L; if (C %% 2L) C <- C + 1L
+  sx <- d$gcol * 0.5; sy <- d$grow * sqrt(3) / 2
   near <- matrix(NA_integer_, R, C); direct <- matrix(FALSE, R, C)
   direct[cbind(d$grow + 1L, d$gcol + 1L)] <- TRUE
   for (r in 0:(R - 1L)) {
-    cc <- seq.int(r %% 2L, C - 1L, by = 2L)              # valid cells in this row
+    cc <- seq.int(r %% 2L, C - 1L, by = 2L)
     dx <- outer(cc * 0.5, sx, "-"); dy <- r * sqrt(3) / 2 - sy
     d2 <- dx^2 + matrix(dy^2, nrow = length(cc), ncol = length(sx), byrow = TRUE)
     near[r + 1L, cc + 1L] <- max.col(-d2, ties.method = "first")
   }
   list(R = R, C = C, near = near, direct = direct)
 }
-## one random move: returns, for every spot, the index of the spot whose
-## outcome it receives
 sp_move <- function(d, G) {
   repeat {
     dr <- sample.int(G$R, 1L) - 1L
@@ -7222,27 +6469,26 @@ sp_move <- function(d, G) {
 }
 
 ## ============================================================================
-## 26.4  LOAD EVERY TUMOUR ONCE AND FIT THE UNPERMUTED MODEL
+## 26.4  LOAD EVERY SECTION ONCE AND FIT THE UNPERMUTED MODEL
 ## ============================================================================
 log_msg("Section 26 start. ADJUST_DEPTH = %s. run_id = %s.", SP_ADJUST_DEPTH, RUN_ID)
 sp_dat <- list(); sp_obs <- list()
 for (i in seq_len(nrow(work))) {
   path <- work$path[i]; sid <- work$sample_id[i]
   if (is.na(path) || !file.exists(path)) next
+  if (!sid %in% SP_SECTIONS) next
   log_msg("[sp load %d/%d] %s", i, nrow(work), sid)
   d <- tryCatch(sp_load(path, sid),
                 error = function(e) { if (grepl("^Section 26", conditionMessage(e))) stop(e)
                   log_msg("  skipped: %s", conditionMessage(e)); NULL })
   if (is.null(d)) next
-  ## (a) all spots, as section 15: used only for the safety check
-  o_all <- sp_fit_obs(d)
+  o_all <- sp_fit_obs(d)                      # all spots, as section 15
   if (is.null(o_all)) { log_msg("  %s: model not fitted -> skipped", sid); next }
-  ## (b) spots that have a grid position: the data the permutation works on
   n_all <- nrow(d); has_pos <- !is.na(d$grow) & !is.na(d$gcol)
   n_nopos <- sum(!has_pos)
   if (n_nopos) { log_msg("  %s: %d of %d spots have no grid position and are set aside",
                          sid, n_nopos, n_all); d <- d[has_pos, , drop = FALSE] }
-  o <- if (n_nopos) sp_fit_obs(d) else o_all
+  o <- if (n_nopos) sp_fit_obs(d) else o_all  # positioned spots: what is permuted
   if (is.null(o)) { log_msg("  %s: model not fitted on positioned spots -> skipped", sid); next }
   X <- model.matrix(as.formula(paste("~", SP_RHS)), data = d)
   sp_dat[[sid]] <- list(X = X, y = d$y, d = d[, c("grow", "gcol")], G = sp_grid(d))
@@ -7255,30 +6501,16 @@ for (i in seq_len(nrow(work))) {
 }
 sp_obs <- do.call(rbind, sp_obs)
 if (is.null(sp_obs) || !nrow(sp_obs)) stop("Section 26: nothing was fitted.")
-obs_pool <- meta_pool(sp_obs$est, sp_obs$var, sp_obs$sample_id)              # positioned spots
-all_pool <- meta_pool(sp_obs$est_all, sp_obs$var_all, sp_obs$sample_id)      # all spots, as section 15
 write_out(sp_obs, "SPPERM_observed_per_tumour")
 
-## ---- safety check ----------------------------------------------------------
-ref <- iso_con_pooled[iso_con_pooled$outcome == SP_OUTCOME &
-                        iso_con_pooled$contrast == "interaction_diff", ]$est
-cat("\n", strrep("=", 74), "\n", sep = "")
-cat("SECTION 26.4  SAFETY CHECK\n")
-cat(strrep("=", 74), "\n", sep = "")
-cat(sprintf("  all spots  = %+.6f   section 15 = %+.6f   (k = %d)\n", all_pool$est, ref, all_pool$k))
-if (length(ref) != 1 || abs(all_pool$est - ref) > SP_TOL) {
-  cat("\n  per tumour (send this table):\n")
-  print(sp_obs[, c("sample_id", "est_all", "n_spots_all", "n_no_position", "n_events")], row.names = FALSE)
-  stop("Section 26 halted: the all-spot fit does not reproduce section 15. Nothing below is interpretable.")
-}
-cat("  PASSED\n")
-cat(sprintf("  spots without a grid position: %d in %d tumour(s)\n",
+## ---- safety check, section by section --------------------------------------
+check_against_s15(data.frame(sample_id = sp_obs$sample_id, est = sp_obs$est_all, var = sp_obs$var_all),
+                  SP_OUTCOME, "Section 26")
+obs_pool <- meta_pool(sp_obs$est, sp_obs$var, sp_obs$sample_id)
+cat(sprintf("  spots without a grid position: %d in %d section(s)\n",
             sum(sp_obs$n_no_position), sum(sp_obs$n_no_position > 0)))
-if (any(sp_obs$n_no_position > 0))
-  print(sp_obs[sp_obs$n_no_position > 0, c("sample_id", "n_spots_all", "n_no_position")], row.names = FALSE)
 cat(sprintf("  estimate on positioned spots = %+.6f  <- the value the permutations are compared with\n",
             obs_pool$est))
-## the fast fitter must agree with glm on the unpermuted data
 chk <- vapply(names(sp_dat), function(s) {
   f <- sp_fit_fast(sp_dat[[s]]$X, sp_dat[[s]]$y)
   if (is.null(f)) NA_real_ else abs(f[["est"]] - sp_obs$est[sp_obs$sample_id == s]) }, numeric(1))
@@ -7309,7 +6541,7 @@ for (b in seq_len(SP_N_PERM)) {
   }
   p <- meta_pool(null_est[b, ], null_var[b, ], sids)
   null_pool$est[b] <- p$est; null_pool$k[b] <- p$k
-  null_pool$pooled_b_col[b] <- mean(bc, na.rm = TRUE)   # simple means, for description only
+  null_pool$pooled_b_col[b] <- mean(bc, na.rm = TRUE)   # simple means, description only
   null_pool$pooled_b_er[b]  <- mean(be, na.rm = TRUE)
   null_pool$direct[b] <- mean(dv)
   if (b == SP_PROBE) {
@@ -7330,10 +6562,10 @@ p_one <- (1 + sum(nl <= obs)) / (B + 1)                 # as negative or more
 p_two <- (1 + sum(abs(nl) >= abs(obs))) / (B + 1)
 q <- quantile(nl, c(0.025, 0.5, 0.975))
 
-## per tumour: where the observed estimate sits in that tumour's own null
 per_t <- do.call(rbind, lapply(sids, function(s) {
   v <- null_est[, s]; v <- v[is.finite(v)]; o <- sp_obs$est[sp_obs$sample_id == s]
-  data.frame(sample_id = s, observed = o, null_mean = mean(v), null_sd = sd(v),
+  data.frame(sample_id = s, patient = patient_of(s), observed = o,
+             null_mean = mean(v), null_sd = sd(v),
              model_se = sqrt(sp_obs$var[sp_obs$sample_id == s]),
              p_one_sided = (1 + sum(v <= o)) / (length(v) + 1), n_perm_ok = length(v))
 }))
@@ -7341,35 +6573,35 @@ per_t$se_ratio <- per_t$null_sd / per_t$model_se
 write_out(per_t, "SPPERM_per_tumour")
 
 sp_summary <- data.frame(outcome = SP_OUTCOME, observed = obs, k = obs_pool$k,
+                         k_sections = obs_pool$k_sections,
                          model_lower = obs_pool$lower, model_upper = obs_pool$upper,
                          n_perm = B, null_mean = mean(nl), null_sd = sd(nl),
                          null_q025 = q[[1]], null_median = q[[2]], null_q975 = q[[3]],
                          p_one_sided = p_one, p_two_sided = p_two,
                          median_k_in_null = median(null_pool$k, na.rm = TRUE),
                          mean_direct_share = mean(null_pool$direct, na.rm = TRUE),
-                         median_se_ratio = median(per_t$se_ratio, na.rm = TRUE),
-                         seed = SP_SEED, adjust_depth = SP_ADJUST_DEPTH, run_id = RUN_ID)
+                         median_se_ratio = unit_median(per_t$se_ratio, per_t$sample_id),
+                         seed = SP_SEED)
 write_out(sp_summary, "SPPERM_summary")
 
 cat("\n", strrep("=", 74), "\n", sep = "")
 cat(sprintf("SECTION 26  RESULT  run_id %s\n", RUN_ID))
 cat(strrep("=", 74), "\n", sep = "")
-cat(sprintf("  observed pooled slope difference : %+.4f  (model CI %+.4f to %+.4f, k = %d)\n",
-            obs, obs_pool$lower, obs_pool$upper, obs_pool$k))
+cat(sprintf("  observed pooled slope difference : %+.4f  (model CI %+.4f to %+.4f, %s)\n",
+            obs, obs_pool$lower, obs_pool$upper, k_lab(obs_pool)))
 cat(sprintf("  permutations usable              : %d of %d\n", B, SP_N_PERM))
 cat(sprintf("  null: mean %+.4f, sd %.4f, middle 95%% %+.4f to %+.4f\n", mean(nl), sd(nl), q[[1]], q[[3]]))
 cat(sprintf("  permuted estimates as negative or more : %d\n", sum(nl <= obs)))
 cat(sprintf("  empirical p, one sided           : %.4f\n", p_one))
 cat(sprintf("  empirical p, two sided           : %.4f\n", p_two))
 cat(sprintf("  smallest p this run can give     : %.4f\n", 1 / (B + 1)))
-cat(sprintf("  %s used per permutation (median)   : %.0f of %d\n",   # BRCA: k unit
-            K_UNIT, median(null_pool$k, na.rm = TRUE),
-            if (POOL_LEVEL == "patient") length(unique(patient_of(sids))) else K))
+cat(sprintf("  %s used per permutation (median)   : %.0f of %d\n",
+            K_UNIT, median(null_pool$k, na.rm = TRUE), n_units(sids)))
 cat(sprintf("  spots that kept a true tissue value (mean share) : %.0f%%\n",
             100 * mean(null_pool$direct, na.rm = TRUE)))
-cat(sprintf("  per tumour: null sd / model SE, median  : %.2f  (1 = model SE is honest, above 1 = too small)\n",
-            median(per_t$se_ratio, na.rm = TRUE)))
-cat(sprintf("  sections with own one sided p < 0.05    : %d of %d\n", sum(per_t$p_one_sided < 0.05), K))
+cat(sprintf("  null sd / model SE, median over %ss : %.2f  (1 = model SE honest, above 1 = too small)\n",
+            UNIT_LABEL, unit_median(per_t$se_ratio, per_t$sample_id)))
+cat(sprintf("  sections with own one sided p < 0.05 : %d of %d\n", sum(per_t$p_one_sided < 0.05), K))
 
 cat("\n  VERDICT\n")
 if (p_two < 0.05) {
